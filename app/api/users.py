@@ -33,7 +33,12 @@ def register_user(request: RegisterRequest):
     )
 
     save_version(new_user, "users", "user_id")
-    return {"message": "User registered", "user_id": str(new_user.user_id)}
+    return {
+        "message": "User registered",
+        "user_id": str(new_user.user_id),
+        "token": new_user.token
+    }
+
 
 
 @router.post("/login")
@@ -48,7 +53,12 @@ def login_user(request: LoginRequest):
     if row.empty or not bcrypt.verify(request.password, row.iloc[0]["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    return {"message": "Login successful", "user_id": row.iloc[0]["user_id"]}
+    user = row.iloc[0]
+    return {
+        "message": "Login successful",
+        "user_id": user["user_id"],
+        "token": user["token"]
+    }
 
 
 @router.put("/{user_id}")
