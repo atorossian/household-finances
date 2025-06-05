@@ -1,0 +1,16 @@
+default:
+  file_format: parquet
+  bucket_name: household-finances
+  log_level: INFO
+
+dev:
+  bucket_name: household-finances-dev
+  log_level: DEBUG
+
+test:
+  bucket_name: household-finances-test
+  log_level: INFO
+
+prod:
+  bucket_name: household-finances
+  log_level: WARNING
