@@ -1,9 +1,10 @@
-from app.services.storage import save_version, load_versions, mark_old_version_as_stale
+from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name
 from datetime import datetime, timezone
 from app.models.schemas import Entry
 from uuid import UUID, uuid4
 import boto3
-from fastapi import APIRouter, HTTPException, Depends
+import pandas as pd
+from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
 
 s3 = boto3.client("s3")
@@ -13,6 +14,19 @@ router = APIRouter()
 
 @router.post("/")
 def create_entry(entry: Entry, user=Depends(get_current_user)):
+    account_id = resolve_id_by_name("accounts", entry.account_name, "account_id")
+    household_id = resolve_id_by_name("households", entry.household_name, "household_id")
+    if str(entry.user_id) != str(user["user_id"]):
+        raise HTTPException(status_code=403, detail="Cannot create entries for another user")
+
+    if str(entry.account_id) != str(user["account_id"]):
+        raise HTTPException(status_code=403, detail="Account mismatch")
+
+    if str(entry.household_id) != str(user["household_id"]):
+        raise HTTPException(status_code=403, detail="Household mismatch")
+
+    entry.account_id = account_id
+    entry.household_id = household_id
     entry.entry_id = uuid4()
     entry.created_at = datetime.now(timezone.utc)
     entry.updated_at = datetime.now(timezone.utc)
@@ -70,3 +84,40 @@ def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
     if versions.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
     return versions.to_dict(orient="records")
+
+@router.get("/summary")
+def entry_summary(
+    month: str = Query(..., pattern=r"\d{4}-\d{2}"),
+    type: str | None = None,
+    user=Depends(get_current_user)
+):
+    df = load_versions("entries")
+
+    df = df[
+        (df["is_current"]) &
+        (~df["is_deleted"].fillna(False)) &
+        (df["user_id"] == str(user["user_id"]))
+    ]
+
+    df["entry_date"] = pd.to_datetime(df["entry_date"])
+    df = df[df["entry_date"].dt.strftime("%Y-%m") == month]
+
+    if type:
+        df = df[df["type"] == type]
+
+    if df.empty:
+        return {"month": month, "total": 0.0, "by_category": {}, "by_account": {}, "by_household": {}}
+
+    total = df["amount"].sum()
+    by_category = df.groupby("category")["amount"].sum().to_dict()
+    by_account = df.groupby("account_name")["amount"].sum().to_dict()
+    by_household = df.groupby("household_name")["amount"].sum().to_dict()
+
+    return {
+        "month": month,
+        "type": type,
+        "total": round(total, 2),
+        "by_category": {k: round(v, 2) for k, v in by_category.items()},
+        "by_account": {k: round(v, 2) for k, v in by_account.items()},
+        "by_household": {k: round(v, 2) for k, v in by_household.items()}
+    }

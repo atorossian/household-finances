@@ -54,3 +54,17 @@ def load_versions(record_type: str) -> pd.DataFrame:
         partitioning="hive"
     )
     return dataset.to_table().to_pandas()
+
+def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
+    df = load_versions(record_type)
+
+    match = df[
+        (df["name"].str.lower() == name.lower()) &
+        (df["is_current"] == True) &
+        (~df["is_deleted"].fillna(False))
+    ]
+
+    if match.empty:
+        raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} '{name}' not found")
+
+    return match.iloc[0][id_field]
