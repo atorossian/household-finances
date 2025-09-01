@@ -24,4 +24,8 @@ class Category(str, Enum):
     restaurants = "restaurants"
     bills = "bills"
     extraordinary_expenses = "extraordinary_expenses"
+    extraordinary_incomes = "extraordinary_incomes"
+    academic = "academic"
+    presents = "presents"
+    vehicles = "vehicles"
     other = "other"

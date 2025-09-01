@@ -6,13 +6,18 @@ from datetime import datetime, timezone, date
 
 class Entry(BaseModel):
     entry_id: UUID = Field(default_factory=uuid4)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_id: UUID
+    account_id: UUID | None = None
+    household_id: UUID | None = None
+    account_name: str
+    household_name: str
     entry_date: date
     value_date: date
     type: EntryType
     category: Category
     amount: float
     description: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
 
@@ -45,3 +50,19 @@ class UserUpdateRequest(BaseModel):
     user_name: str | None = None
     email: EmailStr | None = None
     password: str | None = None
+
+class Household(BaseModel):
+    household_id: UUID = Field(default_factory=uuid4)
+    name: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+
+class Account(BaseModel):
+    account_id: UUID = Field(default_factory=uuid4)
+    name: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
+
