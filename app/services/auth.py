@@ -1,20 +1,52 @@
+import jwt
 from fastapi import Header, HTTPException, Depends
 from app.services.storage import load_versions
 import pandas as pd
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+from app.services.storage import save_version, load_versions
+from fastapi.security import OAuth2PasswordBearer
 
-def get_current_user(authorization: str = Header(...)) -> dict:
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="Invalid auth header")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
+SECRET_KEY = "super-secret"  # move to config
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-    token = authorization.replace("Bearer ", "").strip()
-    users = load_versions("users")
-    user = users[
-        (users["token"] == token) & 
-        (users["is_current"]) & 
-        (~users["is_deleted"])
-    ]
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-    if user.empty:
-        raise HTTPException(status_code=403, detail="Invalid or expired token")
+def create_refresh_token(user_id: str):
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    token_id = str(uuid4())  # unique ID for rotation
+    payload = {"sub": str(user_id), "jti": token_id, "exp": expire}
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    return user.iloc[0].to_dict()
+    # Save refresh token metadata in S3
+    save_version(
+        {
+            "refresh_token_id": token_id,
+            "user_id": user_id,
+            "expires_at": expire.isoformat(),
+            "is_current": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "refresh_tokens",
+        "refresh_token_id"
+    )
+    return token
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        return {"user_id": user_id}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
