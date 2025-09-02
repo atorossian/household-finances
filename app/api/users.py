@@ -7,7 +7,8 @@ from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest,
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale
 from uuid import UUID, uuid4
 from app.services.auth import get_current_user
-
+import jwt
+from app.services.auth import create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 s3 = boto3.client("s3")
 BUCKET_NAME = "household-finances"
@@ -105,3 +106,38 @@ def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
 
     save_version(deleted_user, "users", "user_id")
     return {"message": "User soft-deleted", "user_id": str(user_id)}
+
+@router.post("/refresh")
+def refresh_tokens(refresh_token: str):
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        token_id = payload.get("jti")
+
+        if not user_id or not token_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Verify token in S3
+        df = load_versions("refresh_tokens")
+        token_row = df[(df["refresh_token_id"] == token_id) & (df["is_current"])]
+
+        if token_row.empty:
+            raise HTTPException(status_code=401, detail="Token expired or already used")
+
+        # Mark old refresh token as stale (rotation)
+        mark_old_version_as_stale("refresh_tokens", token_id, "refresh_token_id")
+
+        # Issue new tokens
+        access_token = create_access_token({"sub": user_id})
+        new_refresh_token = create_refresh_token(user_id)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer"
+        }
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
