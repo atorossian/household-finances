@@ -51,14 +51,22 @@ def login_user(request: LoginRequest):
         & (~users_df["is_deleted"])
     ]
 
-    if row.empty or not bcrypt.verify(request.password, row.iloc[0]["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
     user = row.iloc[0]
+
+    if row.empty or not bcrypt.verify(request.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+
+
+    access_token = create_access_token({"sub": user.user_id})
+    refresh_token = create_refresh_token(user.user_id)
+
     return {
         "message": "Login successful",
         "user_id": user["user_id"],
-        "token": user["token"]
+        "access_token": access_token, 
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
     }
 
 
@@ -141,3 +149,38 @@ def refresh_tokens(refresh_token: str):
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+@router.post("/change-password")
+def change_password(current_password: str, new_password: str, user=Depends(get_current_user)):
+
+    users_df = load_versions("users")
+    row = users_df[(users_df["user_id"] == str(user["user_id"])) & (users_df["is_current"])]
+    
+    user = row.iloc[0]
+
+    if row.empty or not bcrypt.verify(current_password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+
+    mark_old_version_as_stale("users", user["user_id"], "user_id")
+
+    # Create new version with new password
+    updated_user = User(
+        user_id=user["user_id"],
+        email=user["email"],
+        hashed_password=bcrypt.hash(new_password),
+        created_at=user["created_at"],
+        updated_at=datetime.now(timezone.utc),
+        is_current=True,
+        is_deleted=False,
+    )
+    save_version(updated_user, "users", "user_id")
+
+    # Invalidate refresh tokens for this user
+    tokens_df = load_versions("refresh_tokens")
+    user_tokens = tokens_df[(tokens_df["user_id"] == str(user["user_id"])) & (tokens_df["is_current"])]
+
+    for _, token in user_tokens.iterrows():
+        mark_old_version_as_stale("refresh_tokens", token["refresh_token_id"], "refresh_token_id")
+
+    return {"message": "Password changed successfully. Please log in again."}
