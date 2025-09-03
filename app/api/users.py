@@ -3,6 +3,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from passlib.hash import bcrypt
 import boto3
+import re
 from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale
 from uuid import UUID, uuid4
@@ -55,8 +56,6 @@ def login_user(request: LoginRequest):
 
     if row.empty or not bcrypt.verify(request.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-
 
     access_token = create_access_token({"sub": user.user_id})
     refresh_token = create_refresh_token(user.user_id)
@@ -161,6 +160,16 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     if row.empty or not bcrypt.verify(current_password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+    if not re.search(r"[A-Z]", new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter")
+    if not re.search(r"[a-z]", new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter")
+    if not re.search(r"\d", new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one digit")
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one special character")
 
     mark_old_version_as_stale("users", user["user_id"], "user_id")
 
