@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from moto import mock_aws
 import boto3
-from app.main import app
+import app.main as app
 from app.config import load_config
 
 @pytest.fixture(scope="session", autouse=True)
@@ -23,4 +23,4 @@ def setup_s3():
 
 @pytest.fixture(scope="function")
 def client():
-    return TestClient(app)
+    return TestClient(app.app)
