@@ -1,7 +1,7 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from moto import mock_s3
+from moto import mock_aws
 import boto3
 from app.main import app
 from app.config import load_config
@@ -12,7 +12,7 @@ def setup_s3():
 
     if env == "dev":
         # Use moto for local testing
-        with mock_s3():
+        with mock_aws():
             s3 = boto3.client("s3", region_name="eu-west-1")
             s3.create_bucket(Bucket="household-finances-dev")
             yield s3
