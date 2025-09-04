@@ -3,6 +3,7 @@ import pyarrow.parquet as pq
 import boto3
 import io
 import pyarrow as pa
+import botocore
 import pyarrow.dataset as ds
 import pandas as pd
 from fastapi import HTTPException
@@ -47,14 +48,17 @@ def save_version(record, record_type: str, id_field: str):
 
     s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
 
-
-def load_versions(record_type: str) -> pd.DataFrame:
-    dataset = ds.dataset(
-        f"s3://{BUCKET_NAME}/{record_type}/",
-        format="parquet",
-        partitioning="hive"
-    )
-    return dataset.to_table().to_pandas()
+def load_versions(entity: str):
+    key = f"{entity}.parquet"
+    try:
+        obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
+        return pd.read_parquet(obj['Body'])
+    except s3.exceptions.NoSuchKey:
+        return pd.DataFrame()
+    except botocore.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "NoSuchKey":
+            return pd.DataFrame()
+        raise
 
 def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
     df = load_versions(record_type)
