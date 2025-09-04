@@ -8,6 +8,7 @@ import pyarrow.dataset as ds
 import pandas as pd
 from fastapi import HTTPException
 from app.config import config
+from app.models.schemas import Entry, User, Household, Account
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
@@ -48,16 +49,16 @@ def save_version(record, record_type: str, id_field: str):
 
     s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
 
-def load_versions(entity: str):
+def load_versions(entity: str, schema):
     key = f"{entity}.parquet"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         return pd.read_parquet(obj['Body'])
     except s3.exceptions.NoSuchKey:
-        return pd.DataFrame(columns=entity.__fields__.keys())
+        return pd.DataFrame(columns=schema.__fields__.keys())
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == "NoSuchKey":
-            return pd.DataFrame(columns=entity.__fields__.keys())
+            return pd.DataFrame(columns=schema.__fields__.keys())
         raise
 
 def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
