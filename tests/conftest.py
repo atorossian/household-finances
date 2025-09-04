@@ -25,3 +25,10 @@ def setup_s3():
 @pytest.fixture(scope="function")
 def client():
     return TestClient(app.app)
+
+@pytest.fixture(autouse=True)
+def cleanup_bucket(setup_s3):
+    yield
+    # cleanup after test
+    setup_s3.delete_object(Bucket="household-finances-test", Key="users.parquet")
+    setup_s3.delete_object(Bucket="household-finances-test", Key="entries.parquet")

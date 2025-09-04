@@ -6,7 +6,7 @@ def test_register_login_update_change_password(client: TestClient):
     # --- Register user ---
     register_payload = {
         "email": "testuser@example.com",
-        "password": "Test1234!",
+        "password": "UserTest1234!",
     }
     response = client.post("/users/register", json=register_payload)
     assert response.status_code == 200

@@ -6,7 +6,7 @@ from datetime import date
 
 def test_entries_full_lifecycle(client: TestClient):
     # --- Register + login user ---
-    register_payload = {"email": "entriesuser@example.com", "password": "Test1234!"}
+    register_payload = {"email": "entriesuser@example.com", "password": "EntryTest1234!"}
     r = client.post("/users/register", json=register_payload)
     assert r.status_code == 200
     user_id = r.json()["user_id"]
