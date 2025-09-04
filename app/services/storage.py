@@ -6,9 +6,10 @@ import pyarrow as pa
 import pyarrow.dataset as ds
 import pandas as pd
 from fastapi import HTTPException
+from app.config import config
 
-s3 = boto3.client("s3")
-BUCKET_NAME = "household-finances"
+s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
+BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
 
 def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str = "id") -> None:
     prefix = f"{record_type}/{id_column}={record_id}/"

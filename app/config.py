@@ -5,9 +5,11 @@ import yaml
 class Config:
     def __init__(self, env: str = None, config_path: str = None):
         env = env or os.getenv("ENV", "dev")
-        config_path = config_path or os.path.join(
-            os.path.dirname(__file__), "../../../", "household-finances-config.yaml"
+        config_path = config_path or os.getenv(
+            "CONFIG_PATH",
+            os.path.join(os.path.dirname(__file__), "..", "household-finances-config.yaml")
         )
+
         config_path = os.path.abspath(config_path)
 
         with open(config_path, "r") as f:

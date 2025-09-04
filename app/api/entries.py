@@ -7,9 +7,6 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
 
-s3 = boto3.client("s3")
-BUCKET_NAME = "household-finances"
-
 router = APIRouter()
 
 @router.post("/")

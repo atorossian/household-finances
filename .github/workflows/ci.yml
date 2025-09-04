@@ -14,6 +14,7 @@ jobs:
       APP_ENV: test
       AWS_REGION: eu-west-1
       S3_BUCKET: household-finances-test
+      CONFIG_PATH: ./household-finances-config.yaml
 
     steps:
       - name: Checkout repo

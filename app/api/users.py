@@ -4,15 +4,11 @@ from datetime import datetime, timezone
 from passlib.hash import bcrypt
 import boto3
 import re
+from uuid import UUID, uuid4
+import jwt
 from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale
-from uuid import UUID, uuid4
-from app.services.auth import get_current_user
-import jwt
-from app.services.auth import create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
-
-s3 = boto3.client("s3")
-BUCKET_NAME = "household-finances"
+from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 router = APIRouter()
 
