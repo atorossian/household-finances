@@ -5,12 +5,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from app.services.storage import save_version, load_versions
 from fastapi.security import OAuth2PasswordBearer
+from app.config import config
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
-SECRET_KEY = "super-secret"  # move to config
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+SECRET_KEY = config.get("auth", {}).get("secret_key")
+ALGORITHM = config.get("auth", {}).get("algorithm", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = config.get("auth", {}).get("access_token_expire_minutes", 15)
+REFRESH_TOKEN_EXPIRE_DAYS = config.get("auth", {}).get("refresh_token_expire_days", 7)
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
