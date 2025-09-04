@@ -54,10 +54,10 @@ def load_versions(entity: str):
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         return pd.read_parquet(obj['Body'])
     except s3.exceptions.NoSuchKey:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=entity.__fields__.keys())
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == "NoSuchKey":
-            return pd.DataFrame()
+            return pd.DataFrame(columns=entity.__fields__.keys())
         raise
 
 def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:

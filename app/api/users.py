@@ -15,6 +15,7 @@ router = APIRouter()
 @router.post("/register")
 def register_user(request: RegisterRequest):
     users_df = load_versions("users")
+
     if request.email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
 
