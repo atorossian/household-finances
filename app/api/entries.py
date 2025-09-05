@@ -16,10 +16,10 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
-    if str(payload.account_id) != str(user["account_id"]):
+    if str(account_id) != str(user["account_id"]):
         raise HTTPException(status_code=403, detail="Account mismatch")
 
-    if str(payload.household_id) != str(user["household_id"]):
+    if str(household_id) != str(user["household_id"]):
         raise HTTPException(status_code=403, detail="Household mismatch")
     
     entry = Entry(
