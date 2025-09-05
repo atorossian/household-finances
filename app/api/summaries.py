@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
-from app.models.schemas import Entry
+from app.models.schemas import Entry, Account, Household
 
 router = APIRouter()
 
@@ -34,8 +34,8 @@ def get_entry_summary(
         return {"message": "No entries found", "summary": {}}
 
     # Resolve account/household names for grouping
-    df["account_name"] = df["account_id"].apply(lambda x: resolve_name_by_id("accounts", x, "account_id"))
-    df["household_name"] = df["household_id"].apply(lambda x: resolve_name_by_id("households", x, "household_id"))
+    df["account_name"] = df["account_id"].apply(lambda x: resolve_name_by_id("accounts", x, Account, "account_id", "name"))
+    df["household_name"] = df["household_id"].apply(lambda x: resolve_name_by_id("households", x, Household, "household_id", "name"))
 
     # Aggregate summaries
     summary = {

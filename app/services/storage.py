@@ -93,12 +93,12 @@ def load_versions(record_type: str, schema=None):
 
     return pd.concat(dfs, ignore_index=True)
 
-def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
-    df = load_versions(record_type, User)
+def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_field: str) -> str:
+    df = load_versions(record_type, schema)
 
     match = df[
-        (df["user_name"].str == name) &
-        (df["is_current"] == True) &
+        (df[name_field] == name) &
+        (df["is_current"]) &
         (~df["is_deleted"].fillna(False))
     ]
 
@@ -107,16 +107,17 @@ def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
 
     return match.iloc[0][id_field]
 
-def resolve_name_by_id(record_type: str, id: str, name_field: str) -> str:
-    df = load_versions(record_type, User)
+
+def resolve_name_by_id(record_type: str, record_id: str, schema, id_field: str, name_field: str) -> str:
+    df = load_versions(record_type, schema)
 
     match = df[
-        (df["user_id"] == id) &
-        (df["is_current"] == True) &
+        (df[id_field] == record_id) &
+        (df["is_current"]) &
         (~df["is_deleted"].fillna(False))
     ]
 
     if match.empty:
-        raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} '{id}' not found")
+        raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} '{record_id}' not found")
 
     return match.iloc[0][name_field]

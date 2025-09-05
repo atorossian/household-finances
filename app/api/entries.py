@@ -1,6 +1,6 @@
 from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name
 from datetime import datetime, timezone
-from app.models.schemas import EntryCreate, Entry
+from app.models.schemas import EntryCreate, Entry, Account, Household
 from uuid import UUID, uuid4
 import boto3
 import pandas as pd
@@ -11,8 +11,8 @@ router = APIRouter()
 
 @router.post("/")
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
-    account_id = resolve_id_by_name("accounts", payload.account_name, "account_id")
-    household_id = resolve_id_by_name("households", payload.household_name, "household_id")
+    account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
+    household_id = resolve_id_by_name("households", payload.household_name,Household, "name", "household_id")
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
