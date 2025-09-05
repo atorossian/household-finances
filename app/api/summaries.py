@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
+from app.models.schemas import Entry
 
 router = APIRouter()
 
@@ -11,7 +12,7 @@ def get_entry_summary(
     type: str = Query(None, description="Optional filter: income or expense"),
     user=Depends(get_current_user)
 ):
-    df = load_versions("entries")
+    df = load_versions("entries", Entry)
 
     # Filter only current, non-deleted entries
     df = df[(df["is_current"]) & (~df["is_deleted"])]

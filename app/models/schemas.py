@@ -32,6 +32,15 @@ class User(BaseModel):
     is_deleted: bool = False
     is_current: bool = True
 
+class RefreshToken(BaseModel):
+    refresh_token_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    token: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
 
 class RegisterRequest(BaseModel):
     user_name: str

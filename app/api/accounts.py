@@ -24,7 +24,7 @@ def create_account(name: str):
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str):
     mark_old_version_as_stale("accounts", account_id, "account_id")
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     current = accounts[accounts["account_id"] == str(account_id)].iloc[-1].to_dict()
     updated = Account(
         account_id=account_id,
@@ -41,7 +41,7 @@ def update_account(account_id: UUID, name: str):
 @router.post("/{account_id}/delete")
 def soft_delete_account(account_id: UUID):
     mark_old_version_as_stale("accounts", account_id, "account_id")
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     current = accounts[accounts["account_id"] == str(account_id)].iloc[-1].to_dict()
     deleted = Account(
         account_id=account_id,
@@ -57,14 +57,14 @@ def soft_delete_account(account_id: UUID):
 
 @router.get("/")
 def list_accounts():
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     current = accounts[(accounts["is_current"] == True) & (accounts["is_deleted"] == False)]
     return current.to_dict(orient="records")
 
 
 @router.get("   /{account_id}")
 def get_account(account_id: UUID):
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     record = accounts[(accounts["account_id"] == str(account_id)) & (accounts["is_current"])]
     if record.empty:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -74,7 +74,7 @@ def get_account(account_id: UUID):
 @router.post("/users/{user_id}/assign-account")
 def assign_account_to_user(user_id: UUID, account_id: UUID):
     mark_old_version_as_stale("users", user_id, "user_id")
-    users = load_versions("users")
+    users = load_versions("users", User)
     current = users[users["user_id"] == str(user_id)].iloc[-1].to_dict()
     updated = User(
         **{k: current[k] for k in User.model_fields if k in current},

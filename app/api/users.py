@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post("/register")
 def register_user(request: RegisterRequest):
-    users_df = load_versions("users")
+    users_df = load_versions("users", User)
 
     if request.email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -42,7 +42,7 @@ def register_user(request: RegisterRequest):
 
 @router.post("/login")
 def login_user(request: LoginRequest):
-    users_df = load_versions("users")
+    users_df = load_versions("users", User)
     row = users_df[
         (users_df["email"] == request.email)
         & (users_df["is_current"])
@@ -68,7 +68,7 @@ def login_user(request: LoginRequest):
 
 @router.put("/{user_id}")
 def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_current_user)):
-    users_df = load_versions("users")
+    users_df = load_versions("users", User)
     mark_old_version_as_stale("users", user_id, "user_id")
 
     old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()

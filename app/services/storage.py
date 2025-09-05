@@ -49,16 +49,34 @@ def save_version(record, record_type: str, id_field: str):
 
     s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
 
-def load_versions(entity: str, schema):
+def _empty_df(schema):
+    if schema is None:
+        return pd.DataFrame()
+    if hasattr(schema, "model_fields"):  # Pydantic v2
+        return pd.DataFrame(columns=list(schema.model_fields.keys()))
+    if hasattr(schema, "__fields__"):  # Pydantic v1
+        return pd.DataFrame(columns=list(schema.__fields__.keys()))
+    return pd.DataFrame(columns=list(schema))
+
+def load_versions(entity: str, schema=None):
+    """
+    Load a versioned entity from S3. 
+    If the file doesn't exist, return an empty DataFrame with schema-defined columns.
+    
+    schema can be:
+      - None → empty DataFrame with no cols
+      - Pydantic model class → will use .model_fields.keys()
+      - list/iterable of column names
+    """
     key = f"{entity}.parquet"
     try:
         obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
         return pd.read_parquet(obj['Body'])
     except s3.exceptions.NoSuchKey:
-        return pd.DataFrame(columns=schema.__fields__.keys())
+        return _empty_df(schema)
     except botocore.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == "NoSuchKey":
-            return pd.DataFrame(columns=schema.__fields__.keys())
+        if e.response['Error']["Code"] == "NoSuchKey":
+            return _empty_df(schema)
         raise
 
 def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:

@@ -69,14 +69,14 @@ def soft_delete_entry(entry_id: UUID, user=Depends(get_current_user)):
 
 @router.get("/")
 def list_current_entries(user=Depends(get_current_user)):
-    df = load_versions("entries")
+    df = load_versions("entries", Entry)
     current = df[(df["is_current"]) & (df["description"] != "deleted")]
     return current.sort_values(by="updated_at", ascending=False).to_dict(orient="records")
 
 
 @router.get("/{entry_id}")
 def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
-    df = load_versions("entries")
+    df = load_versions("entries", Entry)
     versions = df[df["entry_id"] == str(entry_id)].sort_values(by="updated_at", ascending=False)
     if versions.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -88,7 +88,7 @@ def entry_summary(
     type: str | None = None,
     user=Depends(get_current_user)
 ):
-    df = load_versions("entries")
+    df = load_versions("entries", Entry)
 
     df = df[
         (df["is_current"]) &
