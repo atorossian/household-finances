@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      APP_ENV: test
+      AWS_REGION: eu-west-1
+      S3_BUCKET: household-finances-test
+      CONFIG_PATH: ./household-finances-config.yaml
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::873999421968:role/household-finances-ci-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Cleanup S3 test bucket
+        run: |
+          aws s3 rm s3://$S3_BUCKET --recursive || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies (with dev group)
+        run: poetry install --with dev
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          poetry run pytest --maxfail=1 --disable-warnings -q --cov=app

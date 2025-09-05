@@ -1,16 +1,33 @@
 default:
+  region: eu-west-1
   file_format: parquet
-  bucket_name: household-finances
   log_level: INFO
+  s3:
+    bucket_name: household-finances
+  auth:
+    algorithm: HS256
+    access_token_expire_minutes: 15
+    refresh_token_expire_days: 7
 
 dev:
-  bucket_name: household-finances-dev
   log_level: DEBUG
+  s3:
+    bucket_name: household-finances-dev
+  auth:
+    secret_key: dev-secret-key
+
 
 test:
-  bucket_name: household-finances-test
   log_level: INFO
+  s3:
+    bucket_name: household-finances-test
+  auth:
+    secret_key: test-secret-key
+
 
 prod:
-  bucket_name: household-finances
+  s3:
+    bucket_name: household-finances
+  auth:
+    secret_key: ${SECRET_KEY}
   log_level: WARNING

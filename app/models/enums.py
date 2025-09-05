@@ -27,5 +27,4 @@ class Category(str, Enum):
     extraordinary_incomes = "extraordinary_incomes"
     academic = "academic"
     presents = "presents"
-    vehicles = "vehicles"
     other = "other"
