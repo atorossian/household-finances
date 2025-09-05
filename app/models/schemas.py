@@ -7,8 +7,8 @@ from datetime import datetime, timezone, date
 class Entry(BaseModel):
     entry_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
-    account_id: UUID | None = None
-    household_id: UUID | None = None
+    account_id: UUID
+    household_id: UUID
     entry_date: date
     value_date: date
     type: EntryType
@@ -18,6 +18,7 @@ class Entry(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
+    is_deleted: bool = False
 
 
 class User(BaseModel):
@@ -25,7 +26,6 @@ class User(BaseModel):
     user_name: str
     email: EmailStr
     hashed_password: str
-    token: str = Field(default_factory=lambda: str(uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
@@ -64,10 +64,13 @@ class Household(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
+    is_deleted: bool = False
 
 class Account(BaseModel):
     account_id: UUID = Field(default_factory=uuid4)
     name: str
+    user_id: UUID
+    household_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True

@@ -22,15 +22,15 @@ def test_entries_full_lifecycle(client: TestClient):
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     # --- Create account & household ---
-    account_payload = {"name": "Main Account"}
-    r = client.post("/accounts/", data=account_payload, headers=headers)
-    assert r.status_code == 200
-    account_id = r.json()["account_id"]
-
     household_payload = {"name": "My Household"}
-    r = client.post("/households/", data=household_payload, headers=headers)
+    r = client.post("/households/", json=household_payload, headers=headers)
     assert r.status_code == 200
     household_id = r.json()["household_id"]
+
+    account_payload = {"name": "Main Account", "household_id": household_id, "user_id": user_id}
+    r = client.post("/accounts/", json=account_payload, headers=headers)
+    assert r.status_code == 200
+    account_id = r.json()["account_id"]
 
     # --- Create entry ---
     entry_payload = {
