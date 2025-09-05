@@ -11,15 +11,15 @@ router = APIRouter()
 
 @router.post("/")
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
-    account_id = resolve_id_by_name("accounts", entry.account_name, "account_id")
-    household_id = resolve_id_by_name("households", entry.household_name, "household_id")
-    if str(entry.user_id) != str(user["user_id"]):
+    account_id = resolve_id_by_name("accounts", payload.account_name, "account_id")
+    household_id = resolve_id_by_name("households", payload.household_name, "household_id")
+    if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
-    if str(entry.account_id) != str(user["account_id"]):
+    if str(payload.account_id) != str(user["account_id"]):
         raise HTTPException(status_code=403, detail="Account mismatch")
 
-    if str(entry.household_id) != str(user["household_id"]):
+    if str(payload.household_id) != str(user["household_id"]):
         raise HTTPException(status_code=403, detail="Household mismatch")
     
     entry = Entry(
