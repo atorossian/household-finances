@@ -12,7 +12,7 @@ router = APIRouter()
 @router.post("/")
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
-    household_id = resolve_id_by_name("households", payload.household_name,Household, "name", "household_id")
+    household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
@@ -21,13 +21,13 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     household_memberships = load_versions("user_households", UserHousehold)
 
     # Check account membership
-    if not ((account_memberships["user_id"] == str(payload.user_id)) &
-            (account_memberships["account_id"] == str(account_id))).any():
+    if not ((str(account_memberships["user_id"]) == str(payload.user_id)) &
+            (str(account_memberships["account_id"]) == str(account_id))).any():
         raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
 
     # Check household membership
-    if not ((household_memberships["user_id"] == str(payload.user_id)) &
-            (household_memberships["household_id"] == str(household_id))).any():
+    if not ((str(household_memberships["user_id"]) == str(payload.user_id)) &
+            (str(household_memberships["household_id"]) == str(household_id))).any():
         raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
 
     
