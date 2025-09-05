@@ -12,23 +12,23 @@ def test_entries_full_lifecycle(client: TestClient):
         'user_name': "entriesuser",
         "password": "EntryTest1234!"
         }
-    r = client.post("/users/register", json=register_payload)
+    r = client.post("/users/register", json=register_payload.model_dump())
     assert r.status_code == 200
     user_id = r.json()["user_id"]
 
-    r = client.post("/users/login", json=register_payload)
+    r = client.post("/users/login", json=register_payload.model_dump())
     assert r.status_code == 200
     tokens = r.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     # --- Create account & household ---
     account_payload = {"name": "Main Account"}
-    r = client.post("/accounts/", json=account_payload, headers=headers)
+    r = client.post("/accounts/", json=account_payload.model_dump(), headers=headers)
     assert r.status_code == 200
     account_id = r.json()["account_id"]
 
     household_payload = {"name": "My Household"}
-    r = client.post("/households/", json=household_payload, headers=headers)
+    r = client.post("/households/", json=household_payload.model_dump(), headers=headers)
     assert r.status_code == 200
     household_id = r.json()["household_id"]
 
@@ -44,7 +44,7 @@ def test_entries_full_lifecycle(client: TestClient):
         "amount": 42.5,
         "description": "Weekly groceries"
     }
-    r = client.post("/entries/", json=entry_payload, headers=headers)
+    r = client.post("/entries/", json=entry_payload.model_dump(), headers=headers)
     assert r.status_code == 200
     entry_id = r.json()["entry_id"]
 
@@ -60,7 +60,7 @@ def test_entries_full_lifecycle(client: TestClient):
         "amount": 55.0,
         "description": "Groceries updated"
     }
-    r = client.put(f"/entries/{entry_id}", json=updated_payload, headers=headers)
+    r = client.put(f"/entries/{entry_id}", json=updated_payload.model_dump(), headers=headers)
     assert r.status_code == 200
 
     # --- Get entry history (should have 2 versions) ---

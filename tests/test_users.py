@@ -10,7 +10,7 @@ def test_register_login_update_change_password(client: TestClient):
         'user_name': "testuser",
         "password": "UserTest1234!",
     }
-    response = client.post("/users/register", json=register_payload)
+    response = client.post("/users/register", json=register_payload.model_dump())
     assert response.status_code == 200
     body = response.json()
     user_id = body["user_id"]
@@ -21,7 +21,7 @@ def test_register_login_update_change_password(client: TestClient):
         "email": register_payload["email"],
         "password": register_payload["password"],
     }
-    response = client.post("/users/login", json=login_payload)
+    response = client.post("/users/login", json=login_payload.model_dump())
     assert response.status_code == 200
     body = response.json()
     access_token = body["access_token"]
@@ -34,7 +34,7 @@ def test_register_login_update_change_password(client: TestClient):
     update_payload = {
         "email": "newemail@example.com",
     }
-    response = client.put(f"/users/{user_id}", json=update_payload, headers=headers)
+    response = client.put(f"/users/{user_id}", json=update_payload.model_dump(), headers=headers)
     assert response.status_code == 200
     body = response.json()
     assert body["message"] == "User updated successfully"
@@ -44,7 +44,7 @@ def test_register_login_update_change_password(client: TestClient):
         "current_password": register_payload["password"],
         "new_password": "NewPassw0rd!",
     }
-    response = client.post("/users/change-password", params=change_pw_payload, headers=headers)
+    response = client.post("/users/change-password", params=change_pw_payload.model_dump(), headers=headers)
     assert response.status_code == 200
     body = response.json()
     assert body["message"].startswith("Password changed successfully")
@@ -54,7 +54,7 @@ def test_register_login_update_change_password(client: TestClient):
         "email": "newemail@example.com",
         "password": "NewPassw0rd!",
     }
-    response = client.post("/users/login", json=new_login_payload)
+    response = client.post("/users/login", json=new_login_payload.model_dump())
     assert response.status_code == 200
     body = response.json()
     assert "access_token" in body
