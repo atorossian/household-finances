@@ -1,6 +1,6 @@
 from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name
 from datetime import datetime, timezone
-from app.models.schemas import Entry
+from app.models.schemas import EntryCreate, Entry
 from uuid import UUID, uuid4
 import boto3
 import pandas as pd
@@ -10,7 +10,7 @@ from app.services.auth import get_current_user
 router = APIRouter()
 
 @router.post("/")
-def create_entry(entry: Entry, user=Depends(get_current_user)):
+def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", entry.account_name, "account_id")
     household_id = resolve_id_by_name("households", entry.household_name, "household_id")
     if str(entry.user_id) != str(user["user_id"]):
@@ -21,13 +21,22 @@ def create_entry(entry: Entry, user=Depends(get_current_user)):
 
     if str(entry.household_id) != str(user["household_id"]):
         raise HTTPException(status_code=403, detail="Household mismatch")
-
-    entry.account_id = account_id
-    entry.household_id = household_id
-    entry.entry_id = uuid4()
-    entry.created_at = datetime.now(timezone.utc)
-    entry.updated_at = datetime.now(timezone.utc)
-    entry.is_current = True
+    
+    entry = Entry(
+        entry_id=uuid4(),
+        user_id=payload.user_id,
+        account_id=account_id,
+        household_id=household_id,
+        entry_date=payload.entry_date,
+        value_date=payload.value_date,
+        type=payload.type,
+        category=payload.category,
+        amount=payload.amount,
+        description=payload.description,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        is_current=True,
+    )
 
     save_version(entry, "entries", "entry_id")
     return {"message": "Entry created", "entry_id": str(entry.entry_id)}
