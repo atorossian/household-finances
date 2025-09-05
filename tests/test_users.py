@@ -1,11 +1,12 @@
 import pytest
+from uuid import uuid4
 from fastapi.testclient import TestClient
 
 
 def test_register_login_update_change_password(client: TestClient):
     # --- Register user ---
     register_payload = {
-        "email": "testuser@example.com",
+        "email": f"testuser-{uuid4().hex[:6]}@example.com",
         'user_name': "testuser",
         "password": "UserTest1234!",
     }

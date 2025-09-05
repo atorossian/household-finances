@@ -6,7 +6,7 @@ import boto3
 import re
 from uuid import UUID, uuid4
 import jwt
-from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User
+from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
@@ -91,7 +91,7 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
 
 @router.post("/{user_id}/delete")
 def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
-    users_df = load_versions("users")
+    users_df = load_versions("users", User)
     mark_old_version_as_stale("users", user_id, "user_id")
 
     old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
@@ -122,7 +122,7 @@ def refresh_tokens(refresh_token: str):
             raise HTTPException(status_code=401, detail="Invalid token")
 
         # Verify token in S3
-        df = load_versions("refresh_tokens")
+        df = load_versions("refresh_tokens", schema=RefreshToken)
         token_row = df[(df["refresh_token_id"] == token_id) & (df["is_current"])]
 
         if token_row.empty:
@@ -149,7 +149,7 @@ def refresh_tokens(refresh_token: str):
 @router.post("/change-password")
 def change_password(current_password: str, new_password: str, user=Depends(get_current_user)):
 
-    users_df = load_versions("users")
+    users_df = load_versions("users", User)
     row = users_df[(users_df["user_id"] == str(user["user_id"])) & (users_df["is_current"])]
     
     user = row.iloc[0]
@@ -183,7 +183,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     save_version(updated_user, "users", "user_id")
 
     # Invalidate refresh tokens for this user
-    tokens_df = load_versions("refresh_tokens")
+    tokens_df = load_versions("refresh_tokens", schema=RefreshToken)
     user_tokens = tokens_df[(tokens_df["user_id"] == str(user["user_id"])) & (tokens_df["is_current"])]
 
     for _, token in user_tokens.iterrows():

@@ -6,6 +6,15 @@ import boto3
 import app.main as app
 from app.config import config
 
+
+@pytest.fixture(autouse=True)
+def clean_bucket(setup_s3):
+    bucket = "household-finances-test"
+    resp = setup_s3.list_objects_v2(Bucket=bucket)
+    for obj in resp.get("Contents", []):
+        setup_s3.delete_object(Bucket=bucket, Key=obj["Key"])
+    yield
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_s3():
     env = os.getenv("APP_ENV", "dev")

@@ -4,10 +4,11 @@ from uuid import uuid4
 from datetime import date
 
 
+
 def test_entries_full_lifecycle(client: TestClient):
     # --- Register + login user ---
     register_payload = {
-        "email": "entriesuser@example.com",
+        "email": f"entriesuser-{uuid4().hex[:6]}@example.com",
         'user_name': "entriesuser",
         "password": "EntryTest1234!"
         }
