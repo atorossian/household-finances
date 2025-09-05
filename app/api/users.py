@@ -23,7 +23,7 @@ def register_user(request: RegisterRequest):
         user_id=uuid4(),
         user_name=request.user_name,
         email=request.email,
-        hashed_password=bcrypt.hash(request.password),
+        hashed_password=bcrypt.hashpw(request.password),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -51,7 +51,7 @@ def login_user(request: LoginRequest):
 
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.verify(request.password, user["hashed_password"]):
+    if row.empty or not bcrypt.checkpw(request.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     access_token = create_access_token({"sub": user.user_id})
@@ -77,7 +77,7 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
         user_id=user_id,
         user_name=update.user_name or old["user_name"],
         email=update.email or old["email"],
-        hashed_password=bcrypt.hash(update.password) if update.password else old["hashed_password"],
+        hashed_password=bcrypt.hashpw(update.password) if update.password else old["hashed_password"],
         created_at=old["created_at"],
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -154,7 +154,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.verify(current_password, user["hashed_password"]):
+    if row.empty or not bcrypt.checkpw(current_password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     if len(new_password) < 8:
@@ -174,7 +174,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     updated_user = User(
         user_id=user["user_id"],
         email=user["email"],
-        hashed_password=bcrypt.hash(new_password),
+        hashed_password=bcrypt.hashpw(new_password),
         created_at=user["created_at"],
         updated_at=datetime.now(timezone.utc),
         is_current=True,
