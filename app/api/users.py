@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import uuid4
 from datetime import datetime, timezone
-from passlib.hash import bcrypt
+import bcrypt
 import boto3
 import re
 from uuid import UUID, uuid4
