@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.post("/")
-def create_account(account: Household, user=Depends(get_current_user)):
+def create_account(account: Account, user=Depends(get_current_user)):
     new_account = Account(
         account_id=uuid4(),
         name=account.name,
