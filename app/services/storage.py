@@ -4,6 +4,7 @@ import boto3
 import io
 import pyarrow as pa
 import botocore
+from datetime import datetime, timezone
 import pyarrow.dataset as ds
 import pandas as pd
 from fastapi import HTTPException
@@ -36,18 +37,29 @@ def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str 
 
 def save_version(record, record_type: str, id_field: str):
     record_data = record.model_dump()
-    record_id = str(record_data[id_field])
+
+    # Convert UUIDs and datetimes
+    for k, v in record_data.items():
+        if isinstance(v, UUID):
+            record_data[k] = str(v)
+        if isinstance(v, datetime):
+            record_data[k] = pd.to_datetime(v)
+
     df = pd.DataFrame([record_data])
-    table = pa.Table.from_pandas(df)
 
-    buffer = io.BytesIO()
-    pq.write_table(table, buffer)
-    buffer.seek(0)
-
-    timestamp = record_data["updated_at"].replace(":", "").replace("-", "").replace("T", "").split(".")[0]
+    record_id = record_data[id_field]
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     key = f"{record_type}/{id_field}={record_id}/{record_type[:-1]}-{record_id}-{timestamp}.parquet"
 
-    s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    out_buffer = pa.BufferOutputStream()
+    pq.write_table(table, out_buffer)
+
+    s3.put_object(
+        Bucket=BUCKET_NAME,
+        Key=key,
+        Body=out_buffer.getvalue().to_pybytes()
+    )
 
 def _empty_df(schema):
     if schema is None:
@@ -58,29 +70,23 @@ def _empty_df(schema):
         return pd.DataFrame(columns=list(schema.__fields__.keys()))
     return pd.DataFrame(columns=list(schema))
 
-def load_versions(entity: str, schema=None):
-    """
-    Load a versioned entity from S3. 
-    If the file doesn't exist, return an empty DataFrame with schema-defined columns.
-    
-    schema can be:
-      - None → empty DataFrame with no cols
-      - Pydantic model class → will use .model_fields.keys()
-      - list/iterable of column names
-    """
-    key = f"{entity}.parquet"
-    try:
-        obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
-        return pd.read_parquet(obj['Body'])
-    except s3.exceptions.NoSuchKey:
+def load_versions(record_type: str, schema=None):
+    prefix = f"{record_type}/"
+    objects = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix).get("Contents", [])
+
+    dfs = []
+    for obj in objects:
+        key = obj["Key"]
+        body = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"]
+        dfs.append(pd.read_parquet(body))
+
+    if not dfs:
         return _empty_df(schema)
-    except botocore.exceptions.ClientError as e:
-        if e.response['Error']["Code"] == "NoSuchKey":
-            return _empty_df(schema)
-        raise
+
+    return pd.concat(dfs, ignore_index=True)
 
 def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
-    df = load_versions(record_type)
+    df = load_versions(record_type, User)
 
     match = df[
         (df["user_name"].str == name) &
@@ -94,7 +100,7 @@ def resolve_id_by_name(record_type: str, name: str, id_field: str) -> str:
     return match.iloc[0][id_field]
 
 def resolve_name_by_id(record_type: str, id: str, name_field: str) -> str:
-    df = load_versions(record_type)
+    df = load_versions(record_type, User)
 
     match = df[
         (df["user_id"] == id) &
