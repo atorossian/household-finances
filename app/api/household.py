@@ -1,23 +1,24 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.models.schemas import Household, User
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
 @router.post("/")
-def create_household(name: str):
-    household = Household(
+def create_household(household: Household, user=Depends(get_current_user)):
+    new_household = Household(
         household_id=uuid4(),
-        name=name,
+        name=household.name,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
         is_deleted=False
     )
-    save_version(household, "households", "household_id")
-    return {"message": "Household created", "household_id": str(household.household_id)}
+    save_version(new_household, "households", "household_id")
+    return {"message": "Household created", "household_id": str(new_household.household_id)}
 
 
 @router.put("/{household_id}")

@@ -1,24 +1,25 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.models.schemas import Account, Household, User
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
 
 @router.post("/")
-def create_account(name: str):
-    account = Account(
+def create_account(account: Household, user=Depends(get_current_user)):
+    new_account = Account(
         account_id=uuid4(),
-        name=name,
+        name=account.name,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
         is_deleted=False
     )
-    save_version(account, "accounts", "account_id")
-    return {"message": "Account created", "account_id": str(account.account_id)}
+    save_version(new_account, "accounts", "account_id")
+    return {"message": "Account created", "account_id": str(new_account.account_id)}
 
 
 @router.put("/{account_id}")
