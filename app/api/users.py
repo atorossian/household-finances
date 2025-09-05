@@ -18,12 +18,12 @@ def register_user(request: RegisterRequest):
 
     if request.email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
-
+    salt = bcrypt.gensalt()
     new_user = User(
         user_id=uuid4(),
         user_name=request.user_name,
         email=request.email,
-        hashed_password=bcrypt.hashpw(request.password),
+        hashed_password=bcrypt.hashpw(request.password, salt),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -72,12 +72,12 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     mark_old_version_as_stale("users", user_id, "user_id")
 
     old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
-
+    salt = bcrypt.gensalt()
     updated_user = User(
         user_id=user_id,
         user_name=update.user_name or old["user_name"],
         email=update.email or old["email"],
-        hashed_password=bcrypt.hashpw(update.password) if update.password else old["hashed_password"],
+        hashed_password=bcrypt.hashpw(update.password, salt) if update.password else old["hashed_password"],
         created_at=old["created_at"],
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -169,12 +169,12 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
         raise HTTPException(status_code=400, detail="Password must contain at least one special character")
 
     mark_old_version_as_stale("users", user["user_id"], "user_id")
-
+    salt = bcrypt.gensalt()
     # Create new version with new password
     updated_user = User(
         user_id=user["user_id"],
         email=user["email"],
-        hashed_password=bcrypt.hashpw(new_password),
+        hashed_password=bcrypt.hashpw(new_password, salt),
         created_at=user["created_at"],
         updated_at=datetime.now(timezone.utc),
         is_current=True,
