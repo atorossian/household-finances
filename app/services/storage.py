@@ -77,8 +77,8 @@ def load_versions(record_type: str, schema=None):
     dfs = []
     for obj in objects:
         key = obj["Key"]
-        body = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"]
-        dfs.append(pd.read_parquet(body))
+        body = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
+        dfs.append(pd.read_parquet(io.BytesIO(body)))
 
     if not dfs:
         return _empty_df(schema)
