@@ -51,7 +51,7 @@ def login_user(request: LoginRequest):
 
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.checkpw(request.password, user["hashed_password"]):
+    if row.empty or not bcrypt.checkpw(request.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     access_token = create_access_token({"sub": user.user_id})
@@ -154,7 +154,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.checkpw(current_password, user["hashed_password"]):
+    if row.empty or not bcrypt.checkpw(current_password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     if len(new_password) < 8:
