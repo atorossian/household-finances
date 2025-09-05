@@ -36,7 +36,15 @@ def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str 
         
 
 def save_version(record, record_type: str, id_field: str):
-    record_data = record.model_dump()
+    # Handle both Pydantic models and plain dicts
+    if hasattr(record, "model_dump"):  # Pydantic v2
+        record_data = record.model_dump()
+    elif hasattr(record, "dict"):  # Pydantic v1
+        record_data = record.dict()
+    elif isinstance(record, dict):
+        record_data = record
+    else:
+        raise TypeError(f"Unsupported object type for save_version: {type(record)}")
 
     # Convert UUIDs and datetimes
     for k, v in record_data.items():
