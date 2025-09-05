@@ -58,15 +58,14 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
 
 
 @router.put("/{entry_id}")
-def update_entry(entry_id: UUID, updated: Entry, user=Depends(get_current_user)):
-    mark_old_version_as_stale("entries", entry_id, "entry_id")
+def update_entry(updated: Entry, user=Depends(get_current_user)):
+    mark_old_version_as_stale("entries", updated.entry_id, "entry_id")
 
-    updated.entry_id = entry_id
     updated.updated_at = datetime.now(timezone.utc)
     updated.is_current = True
 
     save_version(updated, "entries", "entry_id")
-    return {"message": "Entry updated", "entry_id": str(entry_id)}
+    return {"message": "Entry updated", "entry_id": str(updated.entry_id)}
 
 
 @router.post("/{entry_id}/delete")
