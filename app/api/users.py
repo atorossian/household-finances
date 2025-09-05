@@ -34,8 +34,7 @@ def register_user(request: RegisterRequest):
     save_version(new_user, "users", "user_id")
     return {
         "message": "User registered",
-        "user_id": str(new_user.user_id),
-        "token": new_user.token
+        "user_id": str(new_user.user_id)
     }
 
 
