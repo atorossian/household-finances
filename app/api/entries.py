@@ -19,7 +19,13 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     # Load memberships
     account_memberships = load_versions("user_accounts", UserAccount)
     household_memberships = load_versions("user_households", UserHousehold)
-
+    print(str(account_memberships["user_id"]))
+    print(str(account_memberships["account_id"]))
+    print(str(household_memberships["user_id"]))
+    print(str(household_memberships["household_id"]))
+    print(payload.user_id)
+    print(account_id)
+    print(household_id)
     # Check account membership
     if not ((str(account_memberships["user_id"]) == str(payload.user_id)) &
             (str(account_memberships["account_id"]) == str(account_id))):
