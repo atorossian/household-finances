@@ -22,12 +22,14 @@ def test_entries_full_lifecycle(client: TestClient):
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
     # --- Create account & household ---
-    household_payload = {"name": "My Household"}
+    household_name = "My Household"
+    account_name = "Main Account"
+    household_payload = {"name": household_name}
     r = client.post("/households/", json=household_payload, headers=headers)
     assert r.status_code == 200
     household_id = r.json()["household_id"]
 
-    account_payload = {"name": "Main Account", "household_id": household_id, "user_id": user_id}
+    account_payload = {"name": account_name, "household_id": household_id, "user_id": user_id}
     r = client.post("/accounts/", json=account_payload, headers=headers)
     assert r.status_code == 200
     account_id = r.json()["account_id"]
@@ -35,8 +37,8 @@ def test_entries_full_lifecycle(client: TestClient):
     # --- Create entry ---
     entry_payload = {
         "user_id": user_id,
-        "account_id": account_id,
-        "household_id": household_id,
+        "account_name": account_name,
+        "household_name": household_name,
         "entry_date": str(date.today()),
         "value_date": str(date.today()),
         "type": "expense",
