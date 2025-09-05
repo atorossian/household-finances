@@ -87,3 +87,20 @@ class Account(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+class UserAccount(BaseModel):
+    mapping_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    account_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
+
+class UserHousehold(BaseModel):
+    mapping_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    household_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
+
+

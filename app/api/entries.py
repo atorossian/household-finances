@@ -1,6 +1,6 @@
 from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name
 from datetime import datetime, timezone
-from app.models.schemas import EntryCreate, Entry, Account, Household
+from app.models.schemas import EntryCreate, Entry, Account, Household, UserAccount, UserHousehold
 from uuid import UUID, uuid4
 import boto3
 import pandas as pd
@@ -16,11 +16,20 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
-    if str(account_id) != str(user["account_id"]):
-        raise HTTPException(status_code=403, detail="Account mismatch")
+    # Load memberships
+    account_memberships = load_versions("user_accounts", UserAccount)
+    household_memberships = load_versions("user_households", UserHousehold)
 
-    if str(household_id) != str(user["household_id"]):
-        raise HTTPException(status_code=403, detail="Household mismatch")
+    # Check account membership
+    if not ((account_memberships["user_id"] == str(payload.user_id)) &
+            (account_memberships["account_id"] == str(account_id))).any():
+        raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
+
+    # Check household membership
+    if not ((household_memberships["user_id"] == str(payload.user_id)) &
+            (household_memberships["household_id"] == str(household_id))).any():
+        raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
+
     
     entry = Entry(
         entry_id=uuid4(),
