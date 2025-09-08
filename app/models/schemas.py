@@ -129,3 +129,19 @@ class Debt(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
+
+class DebtCreate(BaseModel):
+    debt_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    account_name: UUID
+    household_name: UUID
+    name: str
+    principal: float
+    interest_rate: float | None = None   # annual %
+    installments: int
+    start_date: date
+    due_day: int   # day of month for payments
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
