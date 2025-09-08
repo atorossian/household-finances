@@ -1,6 +1,6 @@
 from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name
 from datetime import datetime, timezone
-from app.models.schemas import EntryCreate, Entry, Account, Household, UserAccount, UserHousehold
+from app.models.schemas import EntryCreate, Entry, Account, Household, UserAccount, UserHousehold, EntryUpdate
 from uuid import UUID, uuid4
 import boto3
 import pandas as pd
@@ -58,14 +58,34 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
 
 
 @router.put("/{entry_id}")
-def update_entry(updated: Entry, user=Depends(get_current_user)):
-    mark_old_version_as_stale("entries", updated.entry_id, "entry_id")
+def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_user)):
+    account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
+    household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
 
-    updated.updated_at = datetime.now(timezone.utc)
-    updated.is_current = True
+    if str(payload.user_id) != str(user["user_id"]):
+        raise HTTPException(status_code=403, detail="Cannot update entries for another user")
+
+    # Stale old version
+    mark_old_version_as_stale("entries", entry_id, "entry_id")
+
+    updated = Entry(
+        entry_id=entry_id,
+        user_id=payload.user_id,
+        account_id=account_id,
+        household_id=household_id,
+        entry_date=payload.entry_date,
+        value_date=payload.value_date,
+        type=payload.type,
+        category=payload.category,
+        amount=payload.amount,
+        description=payload.description,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        is_current=True,
+    )
 
     save_version(updated, "entries", "entry_id")
-    return {"message": "Entry updated", "entry_id": str(updated.entry_id)}
+    return {"message": "Entry updated", "entry_id": str(entry_id)}
 
 
 @router.post("/{entry_id}/delete")

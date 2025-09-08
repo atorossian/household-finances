@@ -7,7 +7,7 @@ import re
 from uuid import UUID, uuid4
 import jwt
 from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken
-from app.services.storage import load_versions, save_version, mark_old_version_as_stale
+from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 router = APIRouter()
@@ -90,25 +90,28 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
 
 @router.post("/{user_id}/delete")
 def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
-    users_df = load_versions("users", User)
     mark_old_version_as_stale("users", user_id, "user_id")
 
-    old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
-
-    deleted_user = User(
+    now = datetime.now(timezone.utc)
+    deleted = User(
         user_id=user_id,
-        user_name=old["user_name"],
-        email=old["email"],
-        hashed_password=old["hashed_password"],
-        created_at=old["created_at"],
-        updated_at=datetime.now(timezone.utc),
+        email="deleted",
+        user_name="deleted",
+        hashed_password="",
+        created_at=now,
+        updated_at=now,
         is_current=True,
         is_deleted=True,
-        is_active=False
+        is_active=False,
     )
+    save_version(deleted, "users", "user_id")
 
-    save_version(deleted_user, "users", "user_id")
+    # Cascade delete memberships
+    cascade_stale("users", str(user_id), "user_accounts", "user_id")
+    cascade_stale("users", str(user_id), "user_households", "user_id")
+
     return {"message": "User soft-deleted", "user_id": str(user_id)}
+
 
 @router.post("/refresh")
 def refresh_tokens(refresh_token: str):

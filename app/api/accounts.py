@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.models.schemas import Account, Household, User
-from app.services.storage import load_versions, save_version, mark_old_version_as_stale
+from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -42,20 +42,24 @@ def update_account(account_id: UUID, name: str):
 
 
 @router.post("/{account_id}/delete")
-def soft_delete_account(account_id: UUID):
+def soft_delete_account(account_id: UUID, user=Depends(get_current_user)):
     mark_old_version_as_stale("accounts", account_id, "account_id")
-    accounts = load_versions("accounts", Account)
-    current = accounts[accounts["account_id"] == str(account_id)].iloc[-1].to_dict()
+
+    now = datetime.now(timezone.utc)
     deleted = Account(
         account_id=account_id,
-        name=current["name"],
-        created_at=current["created_at"],
-        updated_at=datetime.now(timezone.utc),
+        name="deleted",
+        created_at=now,
+        updated_at=now,
         is_current=True,
-        is_deleted=True
+        is_deleted=True,
     )
     save_version(deleted, "accounts", "account_id")
-    return {"message": "Account deleted", "account_id": str(account_id)}
+
+    # Cascade delete memberships
+    cascade_stale("accounts", str(account_id), "user_accounts", "account_id")
+
+    return {"message": "Account soft-deleted", "account_id": str(account_id)}
 
 
 @router.get("/")

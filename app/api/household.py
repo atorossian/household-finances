@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.models.schemas import Household, User
-from app.services.storage import save_version, mark_old_version_as_stale, load_versions
+from app.services.storage import save_version, mark_old_version_as_stale, load_versions, cascade_stale
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -39,20 +39,24 @@ def update_household(household_id: UUID, name: str):
 
 
 @router.post("/{household_id}/delete")
-def soft_delete_household(household_id: UUID):
+def soft_delete_household(household_id: UUID, user=Depends(get_current_user)):
     mark_old_version_as_stale("households", household_id, "household_id")
-    households = load_versions("households", Household)
-    current = households[households["household_id"] == str(household_id)].iloc[-1].to_dict()
+
+    now = datetime.now(timezone.utc)
     deleted = Household(
         household_id=household_id,
-        name=current["name"],
-        created_at=current["created_at"],
-        updated_at=datetime.now(timezone.utc),
+        name="deleted",
+        created_at=now,
+        updated_at=now,
         is_current=True,
-        is_deleted=True
+        is_deleted=True,
     )
     save_version(deleted, "households", "household_id")
-    return {"message": "Household deleted", "household_id": str(household_id)}
+
+    # Cascade delete memberships
+    cascade_stale("households", str(household_id), "user_households", "household_id")
+
+    return {"message": "Household soft-deleted", "household_id": str(household_id)}
 
 
 @router.get("/")

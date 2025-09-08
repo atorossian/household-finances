@@ -31,6 +31,17 @@ class EntryCreate(BaseModel):
     amount: float
     description: str = ""
 
+class EntryUpdate(BaseModel):
+    user_id: UUID
+    account_name: str
+    household_name: str
+    entry_date: date
+    value_date: date
+    type: EntryType
+    category: Category
+    amount: float
+    description: str = ""
+
 
 class User(BaseModel):
     user_id: UUID = Field(default_factory=uuid4)

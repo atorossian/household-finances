@@ -33,6 +33,17 @@ def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str 
             pq.write_table(pa.Table.from_pandas(df), buffer)
             buffer.seek(0)
             s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
+
+def cascade_stale(record_type: str, record_id: str, mapping_type: str, foreign_key: str):
+    df = load_versions(mapping_type)
+    matches = df[
+        (df[foreign_key] == record_id) &
+        (df["is_current"]) &
+        (~df["is_deleted"].fillna(False))
+    ]
+
+    for _, row in matches.iterrows():
+        mark_old_version_as_stale(mapping_type, row["mapping_id"], "mapping_id")
         
 
 def save_version(record, record_type: str, id_field: str):
