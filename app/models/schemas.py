@@ -7,10 +7,8 @@ from datetime import datetime, timezone, date
 class Entry(BaseModel):
     entry_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
-    account_id: UUID | None = None
-    household_id: UUID | None = None
-    account_name: str
-    household_name: str
+    account_id: UUID
+    household_id: UUID
     entry_date: date
     value_date: date
     type: EntryType
@@ -20,6 +18,29 @@ class Entry(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
+    is_deleted: bool = False
+
+class EntryCreate(BaseModel):
+    user_id: UUID
+    account_name: str
+    household_name: str
+    entry_date: date
+    value_date: date
+    type: EntryType
+    category: Category
+    amount: float
+    description: str = ""
+
+class EntryUpdate(BaseModel):
+    user_id: UUID
+    account_name: str
+    household_name: str
+    entry_date: date
+    value_date: date
+    type: EntryType
+    category: Category
+    amount: float
+    description: str = ""
 
 
 class User(BaseModel):
@@ -27,13 +48,21 @@ class User(BaseModel):
     user_name: str
     email: EmailStr
     hashed_password: str
-    token: str = Field(default_factory=lambda: str(uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
     is_deleted: bool = False
     is_current: bool = True
 
+class RefreshToken(BaseModel):
+    refresh_token_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    token: str
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
 
 class RegisterRequest(BaseModel):
     user_name: str
@@ -57,12 +86,32 @@ class Household(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
+    is_deleted: bool = False
 
 class Account(BaseModel):
     account_id: UUID = Field(default_factory=uuid4)
     name: str
+    user_id: UUID
+    household_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
+
+class UserAccount(BaseModel):
+    mapping_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    account_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
+
+class UserHousehold(BaseModel):
+    mapping_id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    household_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_current: bool = True
+    is_deleted: bool = False
+
 

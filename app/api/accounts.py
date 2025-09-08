@@ -1,30 +1,43 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Account, Household, User
-from app.services.storage import load_versions, save_version, mark_old_version_as_stale
+from app.models.schemas import Account, Household, User, UserAccount
+from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
 
 @router.post("/")
-def create_account(name: str):
+def create_account(payload: Account, user=Depends(get_current_user)):
     account = Account(
         account_id=uuid4(),
-        name=name,
+        name=payload.name,
+        household_id=payload.household_id,
+        user_id=payload.user_id,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
-        is_deleted=False
+        is_deleted=False,
     )
     save_version(account, "accounts", "account_id")
+
+    # Automatically assign the creator as a member
+    mapping = UserAccount(user_id=user["user_id"], account_id=account.account_id)
+    save_version(mapping, "user_accounts", "mapping_id")
+
     return {"message": "Account created", "account_id": str(account.account_id)}
 
+@router.post("/assign-user-to-account")
+def assign_user_to_account(user_id: UUID, account_id: UUID, user=Depends(get_current_user)):
+    mapping = UserAccount(user_id=user_id, account_id=account_id)
+    save_version(mapping, "user_accounts", "mapping_id")
+    return {"message": "User assigned to account"}
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str):
     mark_old_version_as_stale("accounts", account_id, "account_id")
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     current = accounts[accounts["account_id"] == str(account_id)].iloc[-1].to_dict()
     updated = Account(
         account_id=account_id,
@@ -39,32 +52,36 @@ def update_account(account_id: UUID, name: str):
 
 
 @router.post("/{account_id}/delete")
-def soft_delete_account(account_id: UUID):
+def soft_delete_account(account_id: UUID, user=Depends(get_current_user)):
     mark_old_version_as_stale("accounts", account_id, "account_id")
-    accounts = load_versions("accounts")
-    current = accounts[accounts["account_id"] == str(account_id)].iloc[-1].to_dict()
+
+    now = datetime.now(timezone.utc)
     deleted = Account(
         account_id=account_id,
-        name=current["name"],
-        created_at=current["created_at"],
-        updated_at=datetime.now(timezone.utc),
+        name="deleted",
+        created_at=now,
+        updated_at=now,
         is_current=True,
-        is_deleted=True
+        is_deleted=True,
     )
     save_version(deleted, "accounts", "account_id")
-    return {"message": "Account deleted", "account_id": str(account_id)}
+
+    # Cascade delete memberships
+    cascade_stale("accounts", str(account_id), "user_accounts", "account_id")
+
+    return {"message": "Account soft-deleted", "account_id": str(account_id)}
 
 
 @router.get("/")
 def list_accounts():
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     current = accounts[(accounts["is_current"] == True) & (accounts["is_deleted"] == False)]
     return current.to_dict(orient="records")
 
 
 @router.get("   /{account_id}")
 def get_account(account_id: UUID):
-    accounts = load_versions("accounts")
+    accounts = load_versions("accounts", Account)
     record = accounts[(accounts["account_id"] == str(account_id)) & (accounts["is_current"])]
     if record.empty:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -74,7 +91,7 @@ def get_account(account_id: UUID):
 @router.post("/users/{user_id}/assign-account")
 def assign_account_to_user(user_id: UUID, account_id: UUID):
     mark_old_version_as_stale("users", user_id, "user_id")
-    users = load_versions("users")
+    users = load_versions("users", User)
     current = users[users["user_id"] == str(user_id)].iloc[-1].to_dict()
     updated = User(
         **{k: current[k] for k in User.model_fields if k in current},
