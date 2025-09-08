@@ -118,8 +118,9 @@ def test_debt_creates_entries(client: TestClient):
         "interest_rate": 0,
         "installments": 4,
         "start_date": str(date.today()),
-        "due_day": str(date.today())
+        "due_day": int(date.today().day)
     }
+    print(debt_payload)
     r = client.post("/debts/", json=debt_payload, headers=headers)
     assert r.status_code == 200
     assert r.json()["installments"] == 4
