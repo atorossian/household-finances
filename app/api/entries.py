@@ -90,24 +90,37 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
 
 @router.post("/{entry_id}/delete")
 def soft_delete_entry(entry_id: UUID, user=Depends(get_current_user)):
+    df = load_versions("entries", Entry)
+
+    current = df[(df["entry_id"] == str(entry_id)) & (df["is_current"])]
+    if current.empty:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    current_entry = current.iloc[0]
+
+    # Mark old version as stale
     mark_old_version_as_stale("entries", entry_id, "entry_id")
 
     now = datetime.now(timezone.utc)
     deleted = Entry(
         entry_id=entry_id,
-        entry_date=datetime.today(),
-        value_date=datetime.today(),
-        type="expense",
-        category="other",
+        user_id=current_entry["user_id"],
+        account_id=current_entry["account_id"],
+        household_id=current_entry["household_id"],
+        entry_date=pd.to_datetime(current_entry["entry_date"]).date(),
+        value_date=pd.to_datetime(current_entry["value_date"]).date(),
+        type=current_entry["type"],
+        category=current_entry["category"],
         amount=0.0,
         description="deleted",
-        created_at=now,
+        created_at=current_entry["created_at"],
         updated_at=now,
-        is_current=True
+        is_current=True,
     )
 
     save_version(deleted, "entries", "entry_id")
     return {"message": "Entry soft-deleted", "entry_id": str(entry_id)}
+
 
 
 @router.get("/")
