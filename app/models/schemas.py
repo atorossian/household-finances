@@ -133,8 +133,8 @@ class Debt(BaseModel):
 class DebtCreate(BaseModel):
     debt_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
-    account_name: UUID
-    household_name: UUID
+    account_name: str
+    household_name: str
     name: str
     principal: float
     interest_rate: float | None = None   # annual %

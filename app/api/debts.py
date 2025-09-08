@@ -6,12 +6,12 @@ import pandas as pd
 from app.models.schemas import Debt, Entry, EntryType, Category, Account, Household, UserAccount, UserHousehold, DebtCreate
 from app.services.storage import save_version, mark_old_version_as_stale, resolve_id_by_name, load_versions
 from app.services.auth import get_current_user
+from scripts.safe_due_dates import safe_due_date
 
 router = APIRouter()
 
 @router.post("/")
 def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
-
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
     if str(payload.user_id) != str(user["user_id"]):
@@ -65,7 +65,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     entries = []
 
     for i in range(payload.installments):
-        due_date = (payload.start_date + pd.DateOffset(months=i)).replace(day=payload.due_day)
+        due_date = safe_due_date(payload.start_date, i, payload.due_day)
 
         entry = Entry(
             entry_id=uuid4(),
@@ -88,5 +88,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     return {
         "message": "Debt created",
         "debt_id": str(debt.debt_id),
-        "installments": payload.installments
+        "installments": payload.installments,
+        "entries": [str(e.entry_id) for e in entries]
     }
+
