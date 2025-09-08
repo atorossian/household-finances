@@ -30,10 +30,6 @@ def test_register_login_update_change_password(client: TestClient):
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
-    # --- Assign user to account + household ---
-    client.post("/accounts/assign-user-to-account", json={"user_id": user_id, "account_id": account_id}, headers=headers)
-    client.post("/households/assign-user-to-household", json={"user_id": user_id, "household_id": household_id}, headers=headers)
-
     # --- Update user info ---
     update_payload = {
         "email": "newemail@example.com",
