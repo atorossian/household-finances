@@ -124,7 +124,7 @@ class Debt(BaseModel):
     interest_rate: float | None = None   # annual %
     installments: int
     start_date: date
-    due_day: int   # e.g., 15 = pay every 15th of the month
+    due_day: int   # day of month for payments
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
