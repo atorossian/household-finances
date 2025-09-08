@@ -98,14 +98,15 @@ def test_debt_creates_entries(client: TestClient):
     # --- Create household + account ---
     account_name = "Debt Account"
     household_name = "Debt Household"
-    r = client.post("/households/", json={"name": household_name}, headers=headers)
+    household_payload = {"name": household_name}
+    r = client.post("/households/", json=household_payload, headers=headers)
     assert r.status_code == 200
     household_id = r.json()["household_id"]
 
-    r = client.post("/accounts/", json={"name": account_name}, headers=headers)
+    account_payload = {"name": account_name, "household_id": household_id, "user_id": user_id}
+    r = client.post("/accounts/", json=account_payload, headers=headers)
     assert r.status_code == 200
     account_id = r.json()["account_id"]
-
     # --- Create debt ---
     debt_payload = {
         "user_id": user_id,
