@@ -24,7 +24,8 @@ def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str 
     for obj in result["Contents"]:
         key = obj["Key"]
         obj_data = s3.get_object(Bucket=BUCKET_NAME, Key=key)
-        table = pq.read_table(obj_data["Body"])
+        body = io.BytesIO(obj_data["Body"].read())
+        table = pq.read_table(body)
         df = table.to_pandas()
 
         if df.get("is_current", True).iloc[0]:
