@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Household, User
+from app.models.schemas import Household, User, UserHousehold
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, cascade_stale
 from app.services.auth import get_current_user
 
@@ -19,6 +19,12 @@ def create_household(household: Household, user=Depends(get_current_user)):
     )
     save_version(new_household, "households", "household_id")
     return {"message": "Household created", "household_id": str(new_household.household_id)}
+
+@router.post("/assign-user-to-household")
+def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get_current_user)):
+    mapping = UserHousehold(user_id=user_id, household_id=household_id)
+    save_version(mapping, "user_households", "mapping_id")
+    return {"message": "User assigned to household"}
 
 
 @router.put("/{household_id}")

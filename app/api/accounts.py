@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Account, Household, User
+from app.models.schemas import Account, Household, User, UserAccount
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
 from app.services.auth import get_current_user
 
@@ -23,6 +23,11 @@ def create_account(account: Account, user=Depends(get_current_user)):
     save_version(new_account, "accounts", "account_id")
     return {"message": "Account created", "account_id": str(new_account.account_id)}
 
+@router.post("/assign-user-to-account")
+def assign_user_to_account(user_id: UUID, account_id: UUID, user=Depends(get_current_user)):
+    mapping = UserAccount(user_id=user_id, account_id=account_id)
+    save_version(mapping, "user_accounts", "mapping_id")
+    return {"message": "User assigned to account"}
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str):

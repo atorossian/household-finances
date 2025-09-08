@@ -6,7 +6,7 @@ import boto3
 import re
 from uuid import UUID, uuid4
 import jwt
-from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken
+from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, UserAccount, UserHousehold
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
@@ -63,7 +63,6 @@ def login_user(request: LoginRequest):
         "refresh_token": refresh_token,
         "token_type": "bearer"
     }
-
 
 @router.put("/{user_id}")
 def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_current_user)):
