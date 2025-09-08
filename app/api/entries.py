@@ -20,14 +20,25 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     account_memberships = load_versions("user_accounts", UserAccount)
     household_memberships = load_versions("user_households", UserHousehold)
 
-    # Check account membership
-    if not ((str(account_memberships["user_id"]) == str(payload.user_id)) &
-            (str(account_memberships["account_id"]) == str(account_id))):
+    account_match = account_memberships[
+        (account_memberships["user_id"] == str(payload.user_id)) &
+        (account_memberships["account_id"] == str(account_id)) &
+        (account_memberships["is_current"]) &
+        (~account_memberships["is_deleted"].fillna(False))
+    ]
+
+    if account_match.empty:
         raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
 
-    # Check household membership
-    if not ((str(household_memberships["user_id"]) == str(payload.user_id)) &
-            (str(household_memberships["household_id"]) == str(household_id))):
+
+    household_match = household_memberships[
+        (household_memberships["user_id"] == str(payload.user_id)) &
+        (household_memberships["household_id"] == str(household_id)) &
+        (household_memberships["is_current"]) &
+        (~household_memberships["is_deleted"].fillna(False))
+    ]
+
+    if household_match.empty:
         raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
 
     entry = Entry(
