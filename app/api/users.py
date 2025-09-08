@@ -33,7 +33,7 @@ def register_user(request: RegisterRequest):
 
     save_version(new_user, "users", "user_id")
     return {
-        "message": "User registered",
+        "message": "User registered successfully",
         "user_id": str(new_user.user_id)
     }
 
@@ -85,7 +85,7 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     )
 
     save_version(updated_user, "users", "user_id")
-    return {"message": "User updated", "user_id": str(user_id)}
+    return {"message": "User updated successfully", "user_id": str(user_id)}
 
 
 @router.post("/{user_id}/delete")
@@ -110,7 +110,7 @@ def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     cascade_stale("users", str(user_id), "user_accounts", "user_id")
     cascade_stale("users", str(user_id), "user_households", "user_id")
 
-    return {"message": "User soft-deleted", "user_id": str(user_id)}
+    return {"message": "User soft-deleted successfully", "user_id": str(user_id)}
 
 
 @router.post("/refresh")
