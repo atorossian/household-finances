@@ -175,6 +175,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
     # Create new version with new password
     updated_user = User(
         user_id=user["user_id"],
+        user_name=user["user_name"],
         email=user["email"],
         hashed_password=bcrypt.hashpw(new_password.encode('utf-8'), salt),
         created_at=user["created_at"],
