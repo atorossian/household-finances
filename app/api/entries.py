@@ -16,27 +16,20 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 
-    # # Load memberships
-    # account_memberships = load_versions("user_accounts", UserAccount)
-    # household_memberships = load_versions("user_households", UserHousehold)
-    # print(str(account_memberships["user_id"]))
-    # print(str(account_memberships["account_id"]))
-    # print(str(household_memberships["user_id"]))
-    # print(str(household_memberships["household_id"]))
-    # print(payload.user_id)
-    # print(account_id)
-    # print(household_id)
-    # # Check account membership
-    # if not ((str(account_memberships["user_id"]) == str(payload.user_id)) &
-    #         (str(account_memberships["account_id"]) == str(account_id))):
-    #     raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
+    # Load memberships
+    account_memberships = load_versions("user_accounts", UserAccount)
+    household_memberships = load_versions("user_households", UserHousehold)
 
-    # # Check household membership
-    # if not ((str(household_memberships["user_id"]) == str(payload.user_id)) &
-    #         (str(household_memberships["household_id"]) == str(household_id))):
-    #     raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
+    # Check account membership
+    if not ((str(account_memberships["user_id"]) == str(payload.user_id)) &
+            (str(account_memberships["account_id"]) == str(account_id))):
+        raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
 
-    
+    # Check household membership
+    if not ((str(household_memberships["user_id"]) == str(payload.user_id)) &
+            (str(household_memberships["household_id"]) == str(household_id))):
+        raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
+
     entry = Entry(
         entry_id=uuid4(),
         user_id=payload.user_id,
