@@ -8,23 +8,22 @@ from app.services.auth import get_current_user
 router = APIRouter()
 
 @router.post("/")
-def create_household(household: Household, user=Depends(get_current_user)):
-    new_household = Household(
+def create_household(payload: Household, user=Depends(get_current_user)):
+    household = Household(
         household_id=uuid4(),
-        name=household.name,
+        name=payload.name,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
-        is_deleted=False
+        is_deleted=False,
     )
-    save_version(new_household, "households", "household_id")
-    return {"message": "Household created", "household_id": str(new_household.household_id)}
+    save_version(household, "households", "household_id")
 
-@router.post("/assign-user-to-household")
-def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get_current_user)):
-    mapping = UserHousehold(user_id=user_id, household_id=household_id)
+    # Automatically assign the creator as a member
+    mapping = UserHousehold(user_id=user["user_id"], household_id=household.household_id)
     save_version(mapping, "user_households", "mapping_id")
-    return {"message": "User assigned to household"}
+
+    return {"message": "Household created", "household_id": str(household.household_id)}
 
 
 @router.put("/{household_id}")

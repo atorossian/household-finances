@@ -34,10 +34,6 @@ def test_entries_full_lifecycle(client: TestClient):
     assert r.status_code == 200
     account_id = r.json()["account_id"]
 
-    # --- Assign user to account + household ---
-    client.post("/accounts/assign-user-to-account", json={"user_id": user_id, "account_id": account_id}, headers=headers)
-    client.post("/households/assign-user-to-household", json={"user_id": user_id, "household_id": household_id}, headers=headers)
-
     # --- Create entry ---
     entry_payload = {
         "user_id": user_id,

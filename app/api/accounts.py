@@ -9,25 +9,23 @@ router = APIRouter()
 
 
 @router.post("/")
-def create_account(account: Account, user=Depends(get_current_user)):
-    new_account = Account(
+def create_account(payload: Account, user=Depends(get_current_user)):
+    account = Account(
         account_id=uuid4(),
-        name=account.name,
-        user_id=account.user_id,
-        household_id=account.household_id,
+        name=payload.name,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
-        is_deleted=False
+        is_deleted=False,
     )
-    save_version(new_account, "accounts", "account_id")
-    return {"message": "Account created", "account_id": str(new_account.account_id)}
+    save_version(account, "accounts", "account_id")
 
-@router.post("/assign-user-to-account")
-def assign_user_to_account(user_id: UUID, account_id: UUID, user=Depends(get_current_user)):
-    mapping = UserAccount(user_id=user_id, account_id=account_id)
+    # Automatically assign the creator as a member
+    mapping = UserAccount(user_id=user["user_id"], account_id=account.account_id)
     save_version(mapping, "user_accounts", "mapping_id")
-    return {"message": "User assigned to account"}
+
+    return {"message": "Account created", "account_id": str(account.account_id)}
+
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str):
