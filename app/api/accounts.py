@@ -13,6 +13,8 @@ def create_account(payload: Account, user=Depends(get_current_user)):
     account = Account(
         account_id=uuid4(),
         name=payload.name,
+        household_id=payload.household_id,
+        user_id=payload.user_id,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -26,6 +28,11 @@ def create_account(payload: Account, user=Depends(get_current_user)):
 
     return {"message": "Account created", "account_id": str(account.account_id)}
 
+@router.post("/assign-user-to-account")
+def assign_user_to_account(user_id: UUID, account_id: UUID, user=Depends(get_current_user)):
+    mapping = UserAccount(user_id=user_id, account_id=account_id)
+    save_version(mapping, "user_accounts", "mapping_id")
+    return {"message": "User assigned to account"}
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str):
