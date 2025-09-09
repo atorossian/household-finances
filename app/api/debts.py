@@ -79,13 +79,14 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             household_id=household_id,
             entry_date=due_date.date(),
             value_date=due_date.date(),
-            type=EntryType.expense,
-            category=Category.financing,
+            type="expense",
+            category="financing",
             amount=installment_value,
             description=f"{payload.name} installment {i+1}/{payload.installments}",
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
             is_current=True,
+            is_deleted=False,
         )
         save_version(entry, "entries", "entry_id")
         entries.append(entry)
