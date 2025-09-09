@@ -45,7 +45,6 @@ def test_summary_flow():
     # --- Fetch monthly summary ---
     month = date.today().strftime("%Y-%m")
     r = client.get(f"/summaries/summary?month={month}", headers=headers)
-    print(r.json())
     assert r.status_code == 200
     result = r.json()
     assert result["total"] == 50.0
@@ -55,7 +54,8 @@ def test_summary_flow():
     r = client.get("/summaries/summary?last_n_months=1", headers=headers)
     assert r.status_code == 200
     result = r.json()
-    assert result["trends"] is not None
+    assert "type_trends" in result
+    assert "category_trends" in result
 
 def test_summary_trends(client: TestClient):
     # --- Register + login ---
