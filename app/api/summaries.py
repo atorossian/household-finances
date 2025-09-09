@@ -17,13 +17,12 @@ def get_entry_summary(
 ):
     df = load_versions("entries", Entry)
 
-    # Filter only current, non-deleted entries for this user
+    # --- Base filter ---
     df = df[
         (df["is_current"]) &
         (~df["is_deleted"].fillna(False)) &
         (df["user_id"] == str(user["user_id"]))
     ]
-
     if df.empty:
         return {"message": "No entries available"}
 
@@ -32,7 +31,8 @@ def get_entry_summary(
 
     # --- Date filtering ---
     if last_n_months:
-        cutoff = pd.to_datetime("today") - pd.DateOffset(months=last_n_months)
+        today = pd.to_datetime("today").normalize()
+        cutoff = (today - pd.DateOffset(months=last_n_months - 1)).replace(day=1)
         df = df[df["entry_date"] >= cutoff]
     elif start and end:
         start_date = pd.to_datetime(start + "-01")
@@ -51,23 +51,29 @@ def get_entry_summary(
     df["account_name"] = df["account_id"].apply(lambda x: resolve_name_by_id("accounts", x, Account, "account_id", "name"))
     df["household_name"] = df["household_id"].apply(lambda x: resolve_name_by_id("households", x, Household, "household_id", "name"))
 
-    # --- Summaries ---
+    # --- Aggregate summaries ---
     total = df["amount"].sum()
     by_category = df.groupby("category")["amount"].sum().to_dict()
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-    # --- Trends (multi-month) ---
-    trends = None
+    # --- Trends ---
+    type_trends, category_trends = None, None
     if last_n_months or (start and end):
-        trends = df.groupby(["month", "type"])["amount"].sum().unstack(fill_value=0)
-        trends["net"] = trends.get("income", 0) - trends.get("expense", 0)
-        trends = trends.reset_index().to_dict(orient="records")
+        # Type-level trends (income vs expense vs net)
+        type_trends = df.groupby(["month", "type"])["amount"].sum().unstack(fill_value=0)
+        type_trends["net"] = type_trends.get("income", 0) - type_trends.get("expense", 0)
+        type_trends = type_trends.reset_index().to_dict(orient="records")
+
+        # Category-level trends
+        category_trends = df.groupby(["month", "category"])["amount"].sum().unstack(fill_value=0)
+        category_trends = category_trends.reset_index().to_dict(orient="records")
 
     return {
         "total": round(total, 2),
         "by_category": {k: round(v, 2) for k, v in by_category.items()},
         "by_account": {k: round(v, 2) for k, v in by_account.items()},
         "by_household": {k: round(v, 2) for k, v in by_household.items()},
-        "trends": trends,
+        "type_trends": type_trends,
+        "category_trends": category_trends,
     }
