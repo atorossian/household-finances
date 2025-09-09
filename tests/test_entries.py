@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4, UUID
+from uuid import uuid4
 from datetime import date
 
 
@@ -36,7 +36,7 @@ def test_entries_full_lifecycle(client: TestClient):
 
     # --- Create entry ---
     entry_payload = {
-        "user_id": UUID(user_id),
+        "user_id": user_id,
         "account_name": account_name,
         "household_name": household_name,
         "entry_date": str(date.today()),
