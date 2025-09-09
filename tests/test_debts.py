@@ -64,6 +64,6 @@ def test_debt_creates_entries(client: TestClient):
 
     # --- Verify entries are now marked deleted ---
     r = client.get("/entries/", headers=headers)
-    entries_after = [e for e in r.json() if "Phone Loan" in e["description"]]
+    entries_after = [e for e in r.json() if "Car Loan" in e["description"]]
     assert all(e["is_deleted"] is True for e in entries_after)
 

@@ -112,7 +112,7 @@ def soft_delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     # Load debt
     df = load_versions("debts", Debt)
     match = df[
-        (df["debt_id"] == debt_id)
+        (df["debt_id"] == str(debt_id))
         & (df["is_current"] == True)
         & (~df["is_deleted"].fillna(False))
     ]
