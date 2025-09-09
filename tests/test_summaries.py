@@ -107,6 +107,7 @@ def test_summary_trends(client: TestClient):
 
     assert "type_trends" in result
     assert "category_trends" in result
-    assert any("groceries" in d for d in [list(x.values()) for x in result["category_trends"]])
-    assert any("salary" in d for d in [list(x.values()) for x in result["category_trends"]])
+    assert any("groceries" in d for d in result["category_trends"])
+    assert any("salary" in d for d in result["category_trends"])
+
 
