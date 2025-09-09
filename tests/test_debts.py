@@ -21,13 +21,11 @@ def test_debt_creates_entries(client: TestClient):
     account_name = "Debt Account"
     household_payload = {"name": household_name}
     r = client.post("/households/", json=household_payload, headers=headers)
-    print(r.json())
     assert r.status_code == 200
     household_id = r.json()["household_id"]
 
     account_payload = {"name": account_name, "household_id": household_id, "user_id": user_id}
     r = client.post("/accounts/", json=account_payload, headers=headers)
-    print(r.json())
     assert r.status_code == 200
     account_id = r.json()["account_id"]
     
@@ -67,6 +65,7 @@ def test_debt_creates_entries(client: TestClient):
 
     # Verify related entries are also hidden
     r = client.get("/entries/", headers=headers)
+    print(r.json())
     entries = r.json()
     assert all("Car Loan" not in e["description"] for e in entries)
 
