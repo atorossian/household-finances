@@ -64,7 +64,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         is_deleted=False,
     )
     save_version(debt, "debts", "debt_id")
-    print(debt)
+
     # --- Generate installments ---
     installment_value = round(payload.principal / payload.installments, 2)
     entries = []

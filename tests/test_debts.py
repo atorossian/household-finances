@@ -43,6 +43,7 @@ def test_debt_creates_entries(client: TestClient):
     }
 
     r = client.post("/debts/", json=debt_payload, headers=headers)
+    print(r.json())
     assert r.status_code == 200
     assert r.json()["installments"] == 4
 
