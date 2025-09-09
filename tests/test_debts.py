@@ -58,12 +58,13 @@ def test_debt_creates_entries(client: TestClient):
 
     # --- Soft delete debt ---
     r = client.post(f"/debts/{debt_id}/delete", headers=headers)
-    print(r.json())
+
     assert r.status_code == 200
     assert r.json()["message"] == "Debt and related entries soft-deleted"
 
     # --- Verify entries are now marked deleted ---
     r = client.get("/entries/", headers=headers)
+    print(r.json())
     entries_after = [e for e in r.json() if "Car Loan" in e["description"]]
     assert all(e["is_deleted"] is True for e in entries_after)
 
