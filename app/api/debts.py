@@ -106,3 +106,45 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         "installments": payload.installments,
         "entries": [str(e.entry_id) for e in entries]
     }
+
+@router.delete("/{debt_id}")
+def soft_delete_debt(debt_id: str, user=Depends(get_current_user)):
+    # Load debt
+    df = load_versions("debts", Debt)
+    match = df[
+        (df["debt_id"] == debt_id)
+        & (df["is_current"] == True)
+        & (~df["is_deleted"].fillna(False))
+    ]
+
+    if match.empty:
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    debt = match.iloc[0].to_dict()
+
+    if str(debt["user_id"]) != str(user["user_id"]):
+        raise HTTPException(status_code=403, detail="Cannot delete debts of another user")
+
+    # Mark debt as deleted
+    debt_obj = Debt(**debt)
+    debt_obj.is_deleted = True
+    debt_obj.is_current = False
+    debt_obj.updated_at = datetime.now(timezone.utc)
+    save_version(debt_obj, "debts", "debt_id")
+
+    # Cascade to entries
+    entries_df = load_versions("entries", Entry)
+    debt_entries = entries_df[
+        (entries_df["user_id"] == str(user["user_id"]))
+        & (entries_df["description"].str.contains(debt["name"]))
+        & (entries_df["is_current"] == True)
+    ]
+
+    for _, row in debt_entries.iterrows():
+        entry = Entry(**row.to_dict())
+        entry.is_deleted = True
+        entry.is_current = False
+        entry.updated_at = datetime.now(timezone.utc)
+        save_version(entry, "entries", "entry_id")
+
+    return {"message": "Debt and related entries soft-deleted", "debt_id": debt_id}
