@@ -52,7 +52,7 @@ def test_summary_flow():
     assert "groceries" in result["by_category"]
 
     # --- Fetch trend summary (last 1 month) ---
-    r = client.get("/summary?last_n_months=1", headers=headers)
+    r = client.get("/summaries/summary?last_n_months=1", headers=headers)
     assert r.status_code == 200
     result = r.json()
     assert result["trends"] is not None
@@ -102,7 +102,7 @@ def test_summary_trends(client: TestClient):
     client.post("/entries/", json=entry2, headers=headers)
 
     # --- Get last 2 months summary ---
-    r = client.get("/summary?last_n_months=2", headers=headers)
+    r = client.get("/summaries/summary?last_n_months=2", headers=headers)
     result = r.json()
 
     assert "type_trends" in result
