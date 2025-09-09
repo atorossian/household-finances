@@ -141,10 +141,22 @@ def soft_delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     ]
 
     for _, row in debt_entries.iterrows():
-        entry = Entry(**row.to_dict())
-        entry.is_deleted = True
-        entry.is_current = False
-        entry.updated_at = datetime.now(timezone.utc)
+        entry = Entry(
+            entry_id=row.entry_id,
+            user_id=row.user_id,
+            account_id=row.account_id,
+            household_id=row.household_id,
+            entry_date=row.entry_date,
+            value_date=row.value_date,
+            type=row.type,
+            category=row.category,
+            amount=0.0,
+            description=row.description,
+            created_at=row.created_at,
+            updated_at=datetime.now(timezone.utc),
+            is_current=True,
+            is_deleted=False,
+        )
         save_version(entry, "entries", "entry_id")
 
     return {"message": "Debt and related entries soft-deleted", "debt_id": debt_id}
