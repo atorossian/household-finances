@@ -67,7 +67,15 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     save_version(debt, "debts", "debt_id")
 
     # --- Generate installments ---
-    installment_value = round(payload.principal / payload.installments, 2)
+    if payload.interest_rate and payload.interest_rate > 0.0:
+        # Convert annual % to monthly decimal
+        r = payload.interest_rate / 100 / 12
+        n = payload.installments
+        P = payload.principal
+        installment_value = round(P * (r * (1 + r) ** n) / ((1 + r) ** n - 1), 2)
+    else:
+        installment_value = round(payload.principal / payload.installments, 2)
+
     entries = []
 
     for i in range(payload.installments):
