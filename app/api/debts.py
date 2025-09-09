@@ -12,13 +12,9 @@ from app.services.storage import (
     save_version, resolve_id_by_name, load_versions
 )
 from app.services.auth import get_current_user
+from scripts.safe_due_dates import safe_due_date
 
 router = APIRouter()
-
-def safe_due_date(start_date, i, due_day):
-    temp = datetime.date(start_date) + pd.DateOffset(months=i)
-    last_day = monthrange(temp.year, temp.month)[1]
-    return temp.replace(day=min(due_day, last_day))
 
 @router.post("/")
 def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
