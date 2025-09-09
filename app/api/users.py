@@ -7,7 +7,7 @@ import re
 from uuid import UUID, uuid4
 import jwt
 from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, UserAccount, UserHousehold
-from app.services.storage import load_versions, save_version, mark_old_version_as_stale, cascade_stale
+from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 router = APIRouter()
@@ -88,28 +88,8 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
 
 @router.post("/{user_id}/delete")
 def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
-    mark_old_version_as_stale("users", user_id, "user_id")
-
-    now = datetime.now(timezone.utc)
-    deleted = User(
-        user_id=user_id,
-        email="deleted",
-        user_name="deleted",
-        hashed_password="",
-        created_at=now,
-        updated_at=now,
-        is_current=True,
-        is_deleted=True,
-        is_active=False,
-    )
-    save_version(deleted, "users", "user_id")
-
-    # Cascade delete memberships
-    cascade_stale("users", str(user_id), "user_accounts", "user_id")
-    cascade_stale("users", str(user_id), "user_households", "user_id")
-
-    return {"message": "User soft-deleted successfully", "user_id": str(user_id)}
-
+    # Only allow deleting your own account (or admins if you add auth)
+    return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
 
 @router.post("/refresh")
 def refresh_tokens(refresh_token: str):

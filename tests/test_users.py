@@ -59,3 +59,18 @@ def test_register_login_update_change_password(client: TestClient):
     body = response.json()
     assert "access_token" in body
     assert "refresh_token" in body
+
+    # Delete user
+    r = client.delete(f"/users/{user_id}", headers=headers)
+    assert r.status_code == 200
+
+    # Verify user cannot be retrieved
+    r = client.get(f"/users/{user_id}", headers=headers)
+    assert r.status_code == 404  # deleted users should not resolve
+
+    # Verify user’s accounts + households no longer list them
+    r = client.get("/accounts/", headers=headers)
+    assert all(a["user_id"] != user_id for a in r.json())
+
+    r = client.get("/households/", headers=headers)
+    assert all(h["user_id"] != user_id for h in r.json())    
