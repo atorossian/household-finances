@@ -6,7 +6,7 @@ from datetime import date
 # in tests/test_debts.py
 def test_debt_creates_entries(client: TestClient):
     # --- Register + login user ---
-    register_payload = {"email": "debtuser@example.com", "user_name": "debtuser", "password": "DebtTest123!"}
+    register_payload = {"email": f"debtuser-{uuid4().hex[:6]}@example.com", "user_name": "debtuser", "password": "DebtTest123!"}
     r = client.post("/users/register", json=register_payload)
     assert r.status_code == 200
     user_id = r.json()["user_id"]
