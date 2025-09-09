@@ -13,6 +13,7 @@ router = APIRouter()
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
+
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
 

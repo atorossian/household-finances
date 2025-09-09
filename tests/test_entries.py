@@ -81,3 +81,4 @@ def test_entries_full_lifecycle(client: TestClient):
     assert r.status_code == 200
     entries_after = r.json()
     assert all(e["entry_id"] != entry_id for e in entries_after)
+

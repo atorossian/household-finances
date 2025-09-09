@@ -38,7 +38,6 @@ def register_user(request: RegisterRequest):
     }
 
 
-
 @router.post("/login")
 def login_user(request: LoginRequest):
     users_df = load_versions("users", User)
