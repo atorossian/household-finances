@@ -45,6 +45,7 @@ def test_summary_flow():
     # --- Fetch monthly summary ---
     month = date.today().strftime("%Y-%m")
     r = client.get(f"/summary?month={month}", headers=headers)
+    print(r.json())
     assert r.status_code == 200
     result = r.json()
     assert result["total"] == 50.0
@@ -55,3 +56,57 @@ def test_summary_flow():
     assert r.status_code == 200
     result = r.json()
     assert result["trends"] is not None
+
+def test_summary_trends(client: TestClient):
+    # --- Register + login ---
+    register_payload = {"email": f"trend-{uuid4().hex[:6]}@example.com", "user_name": "trenduser", "password": "Trend123!"}
+    r = client.post("/users/register", json=register_payload)
+    user_id = r.json()["user_id"]
+
+    r = client.post("/users/login", json={"email": register_payload["email"], "password": register_payload["password"]})
+    tokens = r.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    # --- Household + account ---
+    r = client.post("/households/", json={"name": "Trend Household"}, headers=headers)
+    household_id = r.json()["household_id"]
+
+    r = client.post("/accounts/", json={"name": "Trend Account", "household_id": household_id, "user_id": user_id}, headers=headers)
+    account_id = r.json()["account_id"]
+
+    # --- Two entries in different categories + months ---
+    entry1 = {
+        "user_id": user_id,
+        "account_name": "Trend Account",
+        "household_name": "Trend Household",
+        "entry_date": "2025-07-01",
+        "value_date": "2025-07-01",
+        "type": "expense",
+        "category": "groceries",
+        "amount": 100,
+        "description": "July groceries"
+    }
+    client.post("/entries/", json=entry1, headers=headers)
+
+    entry2 = {
+        "user_id": user_id,
+        "account_name": "Trend Account",
+        "household_name": "Trend Household",
+        "entry_date": "2025-08-01",
+        "value_date": "2025-08-01",
+        "type": "income",
+        "category": "salary",
+        "amount": 1000,
+        "description": "August salary"
+    }
+    client.post("/entries/", json=entry2, headers=headers)
+
+    # --- Get last 2 months summary ---
+    r = client.get("/summary?last_n_months=2", headers=headers)
+    result = r.json()
+
+    assert "type_trends" in result
+    assert "category_trends" in result
+    assert any("groceries" in d for d in [list(x.values()) for x in result["category_trends"]])
+    assert any("salary" in d for d in [list(x.values()) for x in result["category_trends"]])
+
