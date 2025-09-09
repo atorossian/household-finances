@@ -2,7 +2,7 @@
 from calendar import monthrange
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import uuid4, UUID
 import pandas as pd
 from app.models.schemas import (
     Debt, DebtCreate, Entry,
@@ -107,8 +107,8 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         "entries": [str(e.entry_id) for e in entries]
     }
 
-@router.delete("/{debt_id}")
-def soft_delete_debt(debt_id: str, user=Depends(get_current_user)):
+@router.post("/{debt_id}/delete")
+def soft_delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     # Load debt
     df = load_versions("debts", Debt)
     match = df[
