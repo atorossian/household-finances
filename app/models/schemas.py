@@ -141,7 +141,3 @@ class DebtCreate(BaseModel):
     installments: int
     start_date: date
     due_day: int   # day of month for payments
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    is_current: bool = True
-    is_deleted: bool = False
