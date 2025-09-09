@@ -39,7 +39,7 @@ def test_debt_creates_entries(client: TestClient):
         "interest_rate": 0,
         "installments": 4,
         "start_date": str(date.today()),
-        "due_day": int(date.today().day)
+        "due_day": date.today().day
     }
 
     r = client.post("/debts/", json=debt_payload, headers=headers)
