@@ -86,6 +86,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             user_id=payload.user_id,
             account_id=account_id,
             household_id=household_id,
+            debt_id=payload.debt_id,
             entry_date=due_date.date(),
             value_date=due_date.date(),
             type="expense",
