@@ -131,7 +131,6 @@ class Debt(BaseModel):
     is_deleted: bool = False
 
 class DebtCreate(BaseModel):
-    debt_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     account_name: str
     household_name: str
