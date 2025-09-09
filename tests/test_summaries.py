@@ -44,7 +44,7 @@ def test_summary_flow():
 
     # --- Fetch monthly summary ---
     month = date.today().strftime("%Y-%m")
-    r = client.get(f"/summary?month={month}", headers=headers)
+    r = client.get(f"/summaries/summary?month={month}", headers=headers)
     print(r.json())
     assert r.status_code == 200
     result = r.json()
