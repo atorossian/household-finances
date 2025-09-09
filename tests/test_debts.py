@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
+from uuid import uuid4, UUID
 from datetime import date
 
 # in tests/test_debts.py
@@ -31,12 +31,12 @@ def test_debt_creates_entries(client: TestClient):
     
     # --- Create debt ---
     debt_payload = {
-        "user_id": user_id,
+        "user_id": UUID(user_id),
         "account_name": account_name,
         "household_name": household_name,
         "name": "Car Loan",
-        "principal": 1000,
-        "interest_rate": 0,
+        "principal": 1000.0,
+        "interest_rate": 0.0,
         "installments": 4,
         "start_date": str(date.today()),
         "due_day": date.today().day
