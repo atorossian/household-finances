@@ -48,8 +48,9 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
 
     # --- Build and save debt ---
+    debt_id = uuid4()
     debt = Debt(
-        debt_id=uuid4(),
+        debt_id=debt_id,
         user_id=payload.user_id,
         account_id=account_id,
         household_id=household_id,
@@ -86,7 +87,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             user_id=payload.user_id,
             account_id=account_id,
             household_id=household_id,
-            debt_id=payload.debt_id,
+            debt_id=debt_id,
             entry_date=due_date.date(),
             value_date=due_date.date(),
             type="expense",
