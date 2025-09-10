@@ -86,7 +86,7 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     return {"message": "User updated successfully", "user_id": str(user_id)}
 
 
-@router.post("/{user_id}/delete")
+@router.delete("/{user_id}")
 def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     # Only allow deleting your own account (or admins if you add auth)
     return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
