@@ -81,7 +81,9 @@ def test_register_login_update_change_password(client: TestClient):
 
     # Verify deleted user has no memberships left
     r = client.get("/accounts/memberships", headers=headers)
+    print("Account memberships:", r.json())
     assert all(m["user_id"] != user_id for m in r.json())
 
     r = client.get("/households/memberships", headers=headers)
+    print("Household memberships:", r.json())
     assert all(m["user_id"] != user_id for m in r.json())
