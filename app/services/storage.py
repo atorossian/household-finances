@@ -120,7 +120,7 @@ def load_versions(
                 keys.append(obj["Key"])
             current += timedelta(days=1)
     elif record_id:
-        prefix = f"{record_type}/{model_class.__name__.lower()}_id={record_id}/"
+        prefix = f"{record_type}/{schema.__name__.lower()}_id={record_id}/"
         resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
         keys = [obj["Key"] for obj in resp.get("Contents", [])]
     else:
@@ -128,7 +128,7 @@ def load_versions(
         keys = [obj["Key"] for obj in resp.get("Contents", [])]
 
     if not keys:
-        return pd.DataFrame(columns=model_class.model_fields.keys())
+        return pd.DataFrame(columns=schema.model_fields.keys())
 
     dfs = []
     for key in keys:
