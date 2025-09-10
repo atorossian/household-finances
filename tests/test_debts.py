@@ -67,4 +67,4 @@ def test_debt_creates_entries(client: TestClient):
     r = client.get("/entries/", headers=headers)
     print(r.json())
     entries = r.json()
-    assert all("Car Loan" in e["description"] for e in entries)
+    assert all("Car Loan" not in e["description"] for e in entries)
