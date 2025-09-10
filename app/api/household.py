@@ -82,19 +82,3 @@ def get_household(household_id: UUID):
     if record.empty:
         raise HTTPException(status_code=404, detail="Household not found")
     return record.iloc[0].to_dict()
-
-
-@router.post("/users/{user_id}/assign-household")
-def assign_household_to_user(user_id: UUID, household_id: UUID):
-    mark_old_version_as_stale("users", user_id, "user_id")
-    users = load_versions("users", User)
-    current = users[users["user_id"] == str(user_id)].iloc[-1].to_dict()
-    updated = User(
-        **{k: current[k] for k in User.model_fields if k in current},
-        household_id=household_id,
-        updated_at=datetime.now(timezone.utc),
-        is_current=True
-    )
-    save_version(updated, "users", "user_id")
-    return {"message": "User assigned to household", "user_id": str(user_id), "household_id": str(household_id)}
-
