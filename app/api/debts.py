@@ -117,6 +117,7 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
         user=user, owner_field="user_id", require_owner=True
     )
 
+
 @router.get("/")
 def list_debts(user=Depends(get_current_user)):
     df = load_versions("debts", Debt)
@@ -126,3 +127,4 @@ def list_debts(user=Depends(get_current_user)):
         (df["user_id"] == str(user["user_id"]))
     ]
     return df.to_dict(orient="records")
+
