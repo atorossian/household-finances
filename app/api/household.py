@@ -60,6 +60,20 @@ def list_households():
     current = households[(households["is_current"] == True) & (households["is_deleted"] == False)]
     return current.to_dict(orient="records")
 
+@router.get("/memberships")
+def list_household_memberships(user=Depends(get_current_user)):
+    df = load_versions("user_households", UserHousehold)
+
+    if df.empty:
+        return []
+
+    # Filter current + not deleted memberships
+    df = df[
+        (df["is_current"]) &
+        (~df.get("is_deleted", False).fillna(False))
+    ]
+
+    return df.to_dict(orient="records")
 
 @router.get("/{household_id}")
 def get_household(household_id: UUID):
@@ -84,17 +98,3 @@ def assign_household_to_user(user_id: UUID, household_id: UUID):
     save_version(updated, "users", "user_id")
     return {"message": "User assigned to household", "user_id": str(user_id), "household_id": str(household_id)}
 
-@router.get("/memberships")
-def list_household_memberships(user=Depends(get_current_user)):
-    df = load_versions("user_households", UserHousehold)
-
-    if df.empty:
-        return []
-
-    # Filter current + not deleted memberships
-    df = df[
-        (df["is_current"]) &
-        (~df.get("is_deleted", False).fillna(False))
-    ]
-
-    return df.to_dict(orient="records")
