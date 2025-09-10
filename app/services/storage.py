@@ -5,7 +5,7 @@ import json
 import io
 import pyarrow as pa
 import botocore
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 import pyarrow.dataset as ds
 import pandas as pd
 from typing import Type, Optional
@@ -15,6 +15,7 @@ from app.models.schemas import Entry, User, Household, Account, UserAccount, Use
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
+SENSITIVE_FIELDS = {"password", "hashed_password", "access_token", "refresh_token"}
 
 def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str = "id") -> None:
     prefix = f"{record_type}/{id_column}={record_id}/"
@@ -70,8 +71,15 @@ def save_version(record, record_type: str, id_field: str):
     df = pd.DataFrame([record_data])
 
     record_id = record_data[id_field]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    key = f"{record_type}/{id_field}={record_id}/{record_type[:-1]}-{record_id}-{timestamp}.parquet"
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%dT%H%M%S%fZ")
+
+    # Hybrid partitioning: id → year → month → day
+    key = (
+        f"{record_type}/{id_field}={record_id}/"
+        f"year={now.year}/month={now.month:02}/day={now.day:02}/"
+        f"{record_type[:-1]}-{record_id}-{timestamp}.parquet"
+    )
 
     table = pa.Table.from_pandas(df, preserve_index=False)
     out_buffer = pa.BufferOutputStream()
@@ -92,20 +100,43 @@ def _empty_df(schema):
         return pd.DataFrame(columns=list(schema.__fields__.keys()))
     return pd.DataFrame(columns=list(schema))
 
-def load_versions(record_type: str, schema=None):
+def load_versions(
+    record_type: str,
+    model_class,
+    record_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None
+):
     prefix = f"{record_type}/"
-    objects = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix).get("Contents", [])
+
+    if start and end:
+        # Only scan partitions within the date range
+        keys = []
+        current = start
+        while current <= end:
+            prefix_dt = f"{record_type}/year={current.year}/month={current.month:02d}/day={current.day:02d}/"
+            resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix_dt)
+            for obj in resp.get("Contents", []):
+                keys.append(obj["Key"])
+            current += timedelta(days=1)
+    elif record_id:
+        prefix = f"{record_type}/{model_class.__name__.lower()}_id={record_id}/"
+        resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
+        keys = [obj["Key"] for obj in resp.get("Contents", [])]
+    else:
+        resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
+        keys = [obj["Key"] for obj in resp.get("Contents", [])]
+
+    if not keys:
+        return pd.DataFrame(columns=model_class.model_fields.keys())
 
     dfs = []
-    for obj in objects:
-        key = obj["Key"]
-        body = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
-        dfs.append(pd.read_parquet(io.BytesIO(body)))
-
-    if not dfs:
-        return _empty_df(schema)
+    for key in keys:
+        obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
+        dfs.append(pd.read_parquet(io.BytesIO(obj["Body"].read())))
 
     return pd.concat(dfs, ignore_index=True)
+
 
 def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_field: str) -> str:
     df = load_versions(record_type, schema)
@@ -281,13 +312,14 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
     # Normalize details: convert UUIDs and datetimes to strings
     normalized = {}
     for k, v in (details or {}).items():
-        if isinstance(v, UUID):
+        if k in SENSITIVE_FIELDS:
+            normalized[k] = "***REDACTED***"
+        elif isinstance(v, UUID):
             normalized[k] = str(v)
         elif isinstance(v, (datetime, date)):
             normalized[k] = v.isoformat()
         else:
             normalized[k] = v
-
     details_json = json.dumps(normalized) 
 
     entry = AuditLog(
@@ -297,4 +329,5 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
         resource_id=resource_id,
         details=details_json,
     )
+    
     save_version(entry, "audit_logs", "log_id")

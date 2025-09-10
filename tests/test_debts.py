@@ -49,6 +49,13 @@ def test_debt_creates_entries(client: TestClient):
     assert r.status_code == 200
     assert r.json()["installments"] == 4
 
+    # --- Fetch logs filtered by resource_type ---
+    r = client.get("/audit/logs", params={"resource_type": "debts", "user_id": user_id})
+    assert r.status_code == 200
+    logs = r.json()
+    assert any(log["resource_type"] == "debts" for log in logs)
+    assert any("Car Loan" in log["details"] for log in logs)
+
     # --- Verify entries were created ---
     r = client.get("/entries/", headers=headers)
     entries = r.json()

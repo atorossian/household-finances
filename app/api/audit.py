@@ -15,7 +15,11 @@ def list_audit_logs(
     end: str | None = Query(None),
     user=Depends(get_current_user)
 ):
-    df = load_versions("audit_logs", AuditLog)
+    start_dt, end_dt = None, None
+    if start and end:
+        start_dt, end_dt = pd.to_datetime(start), pd.to_datetime(end)
+
+    df = load_versions("audit_logs", AuditLog, start=start_dt, end=end_dt)
     if df.empty:
         return []
 
@@ -27,8 +31,5 @@ def list_audit_logs(
         df = df[df["resource_type"] == resource_type]
     if action:
         df = df[df["action"] == action]
-    if start and end:
-        start_dt, end_dt = pd.to_datetime(start), pd.to_datetime(end)
-        df = df[(df["timestamp"] >= start_dt) & (df["timestamp"] <= end_dt)]
 
     return df.to_dict(orient="records")
