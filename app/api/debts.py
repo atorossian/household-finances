@@ -9,7 +9,7 @@ from app.models.schemas import (
     Account, Household, UserAccount, UserHousehold
 )
 from app.services.storage import (
-    save_version, resolve_id_by_name, load_versions
+    save_version, resolve_id_by_name, load_versions, soft_delete_record
 )
 from app.services.auth import get_current_user
 from scripts.safe_due_dates import safe_due_date
@@ -48,8 +48,9 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
 
     # --- Build and save debt ---
+    debt_id = uuid4()
     debt = Debt(
-        debt_id=uuid4(),
+        debt_id=debt_id,
         user_id=payload.user_id,
         account_id=account_id,
         household_id=household_id,
@@ -86,6 +87,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             user_id=payload.user_id,
             account_id=account_id,
             household_id=household_id,
+            debt_id=debt_id,
             entry_date=due_date.date(),
             value_date=due_date.date(),
             type="expense",
@@ -107,56 +109,22 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         "entries": [str(e.entry_id) for e in entries]
     }
 
-@router.post("/{debt_id}/delete")
-def soft_delete_debt(debt_id: UUID, user=Depends(get_current_user)):
-    # Load debt
+@router.delete("/{debt_id}")
+def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
+    # Cascade to child entries handled inside storage
+    return soft_delete_record(
+        "debts", str(debt_id), "debt_id", Debt,
+        user=user, owner_field="user_id", require_owner=True
+    )
+
+
+@router.get("/")
+def list_debts(user=Depends(get_current_user)):
     df = load_versions("debts", Debt)
-    match = df[
-        (df["debt_id"] == str(debt_id))
-        & (df["is_current"] == True)
-        & (~df["is_deleted"].fillna(False))
+    df = df[
+        (df["is_current"]) &
+        (~df["is_deleted"].fillna(False)) &
+        (df["user_id"] == str(user["user_id"]))
     ]
+    return df.to_dict(orient="records")
 
-    if match.empty:
-        raise HTTPException(status_code=404, detail="Debt not found")
-
-    debt = match.iloc[0].to_dict()
-
-    if str(debt["user_id"]) != str(user["user_id"]):
-        raise HTTPException(status_code=403, detail="Cannot delete debts of another user")
-
-    # Mark debt as deleted
-    debt_obj = Debt(**debt)
-    debt_obj.is_deleted = True
-    debt_obj.is_current = False
-    debt_obj.updated_at = datetime.now(timezone.utc)
-    save_version(debt_obj, "debts", "debt_id")
-
-    # Cascade to entries
-    entries_df = load_versions("entries", Entry)
-    debt_entries = entries_df[
-        (entries_df["user_id"] == str(user["user_id"]))
-        & (entries_df["description"].str.contains(debt["name"]))
-        & (entries_df["is_current"] == True)
-    ]
-
-    for _, row in debt_entries.iterrows():
-        entry = Entry(
-            entry_id=row.entry_id,
-            user_id=row.user_id,
-            account_id=row.account_id,
-            household_id=row.household_id,
-            entry_date=row.entry_date,
-            value_date=row.value_date,
-            type=row.type,
-            category=row.category,
-            amount=0.0,
-            description=row.description,
-            created_at=row.created_at,
-            updated_at=datetime.now(timezone.utc),
-            is_current=True,
-            is_deleted=False,
-        )
-        save_version(entry, "entries", "entry_id")
-
-    return {"message": "Debt and related entries soft-deleted", "debt_id": debt_id}

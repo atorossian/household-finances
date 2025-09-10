@@ -9,6 +9,7 @@ class Entry(BaseModel):
     user_id: UUID
     account_id: UUID
     household_id: UUID
+    debt_id: UUID | None = None
     entry_date: date
     value_date: date
     type: EntryType

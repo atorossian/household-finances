@@ -56,15 +56,17 @@ def test_debt_creates_entries(client: TestClient):
     assert len(debt_entries) == 4
     assert all(e["category"] == "financing" for e in debt_entries)
 
-    # --- Soft delete debt ---
-    r = client.post(f"/debts/{debt_id}/delete", headers=headers)
-
+    # Delete debt
+    r = client.delete(f"/debts/{debt_id}", headers=headers)
     assert r.status_code == 200
-    assert r.json()["message"] == "Debt and related entries soft-deleted"
 
-    # --- Verify entries are now marked deleted ---
+    # Verify debt is gone
+    r = client.get("/debts/", headers=headers)
+    debts = r.json()
+    assert all(d["debt_id"] != debt_id for d in debts)
+
+    # Verify related entries are also hidden
     r = client.get("/entries/", headers=headers)
     print(r.json())
-    entries_after = [e for e in r.json() if "Car Loan" in e["description"]]
-    assert all(e["is_deleted"] is True for e in entries_after)
-
+    entries = r.json()
+    assert all("Car Loan" not in e["description"] for e in entries)
