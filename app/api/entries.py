@@ -1,4 +1,4 @@
-from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name, soft_delete_record
+from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name, soft_delete_record, log_action
 from datetime import datetime, timezone
 from app.models.schemas import EntryCreate, Entry, Account, Household, UserAccount, UserHousehold, EntryUpdate
 from uuid import UUID, uuid4
@@ -59,6 +59,8 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     )
 
     save_version(entry, "entries", "entry_id")
+    log_action(user["user_id"], "create", "entries", str(entry.entry_id), payload.model_dump())
+
     return {"message": "Entry created", "entry_id": str(entry.entry_id)}
 
 
@@ -90,11 +92,14 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
     )
 
     save_version(updated, "entries", "entry_id")
+    log_action(user["user_id"], "update", "entries", str(entry_id), payload.model_dump())
+
     return {"message": "Entry updated", "entry_id": str(entry_id)}
 
 
 @router.delete("/{entry_id}")
 def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
+
     return soft_delete_record(
         "entries", str(entry_id), "entry_id", Entry,
         user=user, owner_field="user_id", require_owner=True
@@ -109,7 +114,7 @@ def list_current_entries(user=Depends(get_current_user)):
         (~df.get("is_deleted", False).fillna(False)) &
         (df["user_id"] == str(user["user_id"]))
     ]
-    
+    log_action(user["user_id"], "list", "entries", None, {"count": len(current)})
     return current.sort_values(by="updated_at", ascending=False).to_dict(orient="records")
 
 
@@ -119,4 +124,6 @@ def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
     versions = df[df["entry_id"] == str(entry_id)].sort_values(by="updated_at", ascending=False)
     if versions.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
+    
+    log_action(user["user_id"], "get", "entries", str(entry_id))
     return versions.to_dict(orient="records")

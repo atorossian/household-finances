@@ -9,7 +9,7 @@ from app.models.schemas import (
     Account, Household, UserAccount, UserHousehold
 )
 from app.services.storage import (
-    save_version, resolve_id_by_name, load_versions, soft_delete_record
+    save_version, resolve_id_by_name, load_versions, soft_delete_record, log_action, mark_old_version_as_stale
 )
 from app.services.auth import get_current_user
 from scripts.safe_due_dates import safe_due_date
@@ -66,6 +66,8 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         is_deleted=False,
     )
     save_version(debt, "debts", "debt_id")
+    log_action(user["user_id"], "create", "debts", str(debt.debt_id), payload.model_dump())
+
 
     # --- Generate installments ---
     if payload.interest_rate and payload.interest_rate > 0.0:
@@ -100,6 +102,7 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             is_deleted=False,
         )
         save_version(entry, "entries", "entry_id")
+        log_action(user["user_id"], "create", "entries", str(entry.entry_id), entry.model_dump())
         entries.append(entry)
 
     return {
@@ -109,6 +112,28 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         "entries": [str(e.entry_id) for e in entries]
     }
 
+@router.put("/{debt_id}")
+def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
+    debts = load_versions("debts", Debt)
+    match = debts[(debts["debt_id"] == str(debt_id)) & (debts["is_current"]) & (~debts["is_deleted"].fillna(False))]
+    if match.empty:
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    row = match.iloc[0].to_dict()
+    mark_old_version_as_stale("debts", str(debt_id), "debt_id")
+
+    updated = Debt(
+        **{**row, **payload},
+        debt_id=debt_id,
+        updated_at=datetime.now(timezone.utc),
+        is_current=True,
+        is_deleted=False
+    )
+    save_version(updated, "debts", "debt_id")
+
+    log_action(user["user_id"], "update", "debts", str(debt_id), payload)
+    return {"message": "Debt updated", "debt_id": str(debt_id)}
+
 @router.delete("/{debt_id}")
 def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     # Cascade to child entries handled inside storage
@@ -116,7 +141,6 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
         "debts", str(debt_id), "debt_id", Debt,
         user=user, owner_field="user_id", require_owner=True
     )
-
 
 @router.get("/")
 def list_debts(user=Depends(get_current_user)):
@@ -126,5 +150,6 @@ def list_debts(user=Depends(get_current_user)):
         (~df["is_deleted"].fillna(False)) &
         (df["user_id"] == str(user["user_id"]))
     ]
+    log_action(user["user_id"], "list", "debts", None, {"count": len(df)})
     return df.to_dict(orient="records")
 

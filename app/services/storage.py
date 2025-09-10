@@ -1,19 +1,21 @@
 from uuid import UUID, uuid4
 import pyarrow.parquet as pq
 import boto3
+import json
 import io
 import pyarrow as pa
 import botocore
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 import pyarrow.dataset as ds
 import pandas as pd
 from typing import Type, Optional
 from fastapi import HTTPException
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken
+from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
+SENSITIVE_FIELDS = {"password", "hashed_password", "access_token", "refresh_token"}
 
 def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str = "id") -> None:
     prefix = f"{record_type}/{id_column}={record_id}/"
@@ -69,8 +71,15 @@ def save_version(record, record_type: str, id_field: str):
     df = pd.DataFrame([record_data])
 
     record_id = record_data[id_field]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    key = f"{record_type}/{id_field}={record_id}/{record_type[:-1]}-{record_id}-{timestamp}.parquet"
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%dT%H%M%S%fZ")
+
+    # Hybrid partitioning: id → year → month → day
+    key = (
+        f"{record_type}/{id_field}={record_id}/"
+        f"year={now.year}/month={now.month:02}/day={now.day:02}/"
+        f"{record_type[:-1]}-{record_id}-{timestamp}.parquet"
+    )
 
     table = pa.Table.from_pandas(df, preserve_index=False)
     out_buffer = pa.BufferOutputStream()
@@ -91,20 +100,43 @@ def _empty_df(schema):
         return pd.DataFrame(columns=list(schema.__fields__.keys()))
     return pd.DataFrame(columns=list(schema))
 
-def load_versions(record_type: str, schema=None):
+def load_versions(
+    record_type: str,
+    schema,
+    record_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None
+):
     prefix = f"{record_type}/"
-    objects = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix).get("Contents", [])
+
+    if start and end:
+        # Only scan partitions within the date range
+        keys = []
+        current = start
+        while current <= end:
+            prefix_dt = f"{record_type}/year={current.year}/month={current.month:02d}/day={current.day:02d}/"
+            resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix_dt)
+            for obj in resp.get("Contents", []):
+                keys.append(obj["Key"])
+            current += timedelta(days=1)
+    elif record_id:
+        prefix = f"{record_type}/{schema.__name__.lower()}_id={record_id}/"
+        resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
+        keys = [obj["Key"] for obj in resp.get("Contents", [])]
+    else:
+        resp = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
+        keys = [obj["Key"] for obj in resp.get("Contents", [])]
+
+    if not keys:
+        return pd.DataFrame(columns=schema.model_fields.keys())
 
     dfs = []
-    for obj in objects:
-        key = obj["Key"]
-        body = s3.get_object(Bucket=BUCKET_NAME, Key=key)["Body"].read()
-        dfs.append(pd.read_parquet(io.BytesIO(body)))
-
-    if not dfs:
-        return _empty_df(schema)
+    for key in keys:
+        obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
+        dfs.append(pd.read_parquet(io.BytesIO(obj["Body"].read())))
 
     return pd.concat(dfs, ignore_index=True)
+
 
 def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_field: str) -> str:
     df = load_versions(record_type, schema)
@@ -187,6 +219,7 @@ def soft_delete_record(
     # instantiate model and save
     deleted_obj = model_cls(**data)
     save_version(deleted_obj, record_type, id_field)
+    log_action(user.get("user_id") if user else None, "delete", record_type, str(record_id))
 
     # Built-in cascades:
     if record_type == "users":
@@ -212,6 +245,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserAccount(**data), "user_accounts", "mapping_id")
+        log_action(user_id, "cascade_delete", "account_membership", r["mapping_id"])
 
     # user_households
     uh_df = load_versions("user_households", UserHousehold)
@@ -225,6 +259,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserHousehold(**data), "user_households", "mapping_id")
+        log_action(user_id, "cascade_delete", "household_membership", r["mapping_id"])
 
     # refresh_tokens (invalidate)
     rt_df = load_versions("refresh_tokens", RefreshToken)
@@ -247,7 +282,8 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     """
 
     entries_df = load_versions("entries", Entry)
-
+    debt_name = debt_row.get("name", "")
+    user_id = debt_row.get("user_id")
     # If entries include debt_id column, prefer that
     if "debt_id" in entries_df.columns:
         sel = entries_df[
@@ -257,8 +293,6 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         ]
     else:
         # fallback: match by description (best-effort)
-        debt_name = debt_row.get("name", "")
-        user_id = debt_row.get("user_id")
         sel = entries_df[
             (entries_df["description"].str.contains(str(debt_name), na=False)) &
             (entries_df["user_id"] == str(user_id)) &
@@ -271,3 +305,29 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         data = row.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(Entry(**data), "entries", "entry_id")
+        log_action(user_id, "cascade_delete", "entries", row["entry_id"])
+
+def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
+
+    # Normalize details: convert UUIDs and datetimes to strings
+    normalized = {}
+    for k, v in (details or {}).items():
+        if k in SENSITIVE_FIELDS:
+            normalized[k] = "***REDACTED***"
+        elif isinstance(v, UUID):
+            normalized[k] = str(v)
+        elif isinstance(v, (datetime, date)):
+            normalized[k] = v.isoformat()
+        else:
+            normalized[k] = v
+    details_json = json.dumps(normalized) 
+
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=details_json,
+    )
+    
+    save_version(entry, "audit_logs", "log_id")

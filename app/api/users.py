@@ -7,7 +7,7 @@ import re
 from uuid import UUID, uuid4
 import jwt
 from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, UserAccount, UserHousehold
-from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record
+from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 router = APIRouter()
@@ -32,6 +32,8 @@ def register_user(request: RegisterRequest):
     )
 
     save_version(new_user, "users", "user_id")
+    log_action(str(new_user.user_id), "register", "users", str(new_user.user_id), request.model_dump())
+
     return {
         "message": "User registered successfully",
         "user_id": str(new_user.user_id)
@@ -55,6 +57,7 @@ def login_user(request: LoginRequest):
     access_token = create_access_token({"sub": user.user_id})
     refresh_token = create_refresh_token(user.user_id)
 
+    log_action(user["user_id"], "login", "users", str(user["user_id"]))
     return {
         "message": "Login successful",
         "user_id": user["user_id"],
@@ -83,6 +86,7 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     )
 
     save_version(updated_user, "users", "user_id")
+    log_action(user["user_id"], "update", "users", str(user_id), update.model_dump())
     return {"message": "User updated successfully", "user_id": str(user_id)}
 
 
@@ -169,7 +173,8 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
 
     for _, token in user_tokens.iterrows():
         mark_old_version_as_stale("refresh_tokens", token["refresh_token_id"], "refresh_token_id")
-
+    
+    log_action(user["user_id"], "change_password", "users", str(user["user_id"]))
     return {"message": "Password changed successfully. Please log in again."}
 
 @router.get("/{user_id}")
@@ -184,5 +189,5 @@ def get_user(user_id: str, user=Depends(get_current_user)):
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
-
+    log_action(user["user_id"], "get", "user", str(user_id))
     return match.iloc[0].to_dict()
