@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from app.models.schemas import Household, User, UserHousehold
-from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record
+from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
 
 router = APIRouter()
@@ -18,10 +18,12 @@ def create_household(payload: Household, user=Depends(get_current_user)):
         is_deleted=False,
     )
     save_version(household, "households", "household_id")
+    log_action(user["user_id"], "create", "households", str(household.household_id), payload.model_dump())
 
     # Automatically assign the creator as a member
     mapping = UserHousehold(user_id=user["user_id"], household_id=household.household_id)
     save_version(mapping, "user_households", "mapping_id")
+    log_action(user["user_id"], "assign_user", "households", str(household.household_id), {"user_id": str(user.user_id)})
 
     return {"message": "Household created", "household_id": str(household.household_id)}
 
@@ -29,10 +31,12 @@ def create_household(payload: Household, user=Depends(get_current_user)):
 def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get_current_user)):
     mapping = UserHousehold(user_id=user_id, household_id=household_id)
     save_version(mapping, "user_households", "mapping_id")
+    log_action(user["user_id"], "assign_user", "households", str(household_id), {"user_id": str(user_id)})
+
     return {"message": "User assigned to household"}
 
 @router.put("/{household_id}")
-def update_household(household_id: UUID, name: str):
+def update_household(household_id: UUID, name: str, user=Depends(get_current_user)):
     mark_old_version_as_stale("households", household_id, "household_id")
     households = load_versions("households", Household)
     current = households[households["household_id"] == str(household_id)].iloc[-1].to_dict()
@@ -45,6 +49,8 @@ def update_household(household_id: UUID, name: str):
         is_deleted=False
     )
     save_version(updated, "households", "household_id")
+    log_action(user["user_id"], "update", "households", str(household_id), {"name": name})
+
     return {"message": "Household updated", "household_id": str(household_id)}
 
 @router.delete("/{household_id}")
@@ -55,9 +61,10 @@ def delete_household(household_id: UUID, user=Depends(get_current_user)):
     )
 
 @router.get("/")
-def list_households():
+def list_households(user=Depends(get_current_user)):
     households = load_versions("households", Household)
     current = households[(households["is_current"] == True) & (households["is_deleted"] == False)]
+    log_action(user["user_id"], "list", "households", None, {"count": len(current)})
     return current.to_dict(orient="records")
 
 @router.get("/memberships")
@@ -72,13 +79,15 @@ def list_household_memberships(user=Depends(get_current_user)):
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
-
+    log_action(user["user_id"], "list", "household_memberships", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
 @router.get("/{household_id}")
-def get_household(household_id: UUID):
+def get_household(household_id: UUID, user=Depends(get_current_user)):
     households = load_versions("households", Household)
     record = households[(households["household_id"] == str(household_id)) & (households["is_current"])]
     if record.empty:
         raise HTTPException(status_code=404, detail="Household not found")
+    
+    log_action(user["user_id"], "get", "households", str(household_id))
     return record.iloc[0].to_dict()

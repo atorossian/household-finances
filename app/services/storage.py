@@ -187,6 +187,7 @@ def soft_delete_record(
     # instantiate model and save
     deleted_obj = model_cls(**data)
     save_version(deleted_obj, record_type, id_field)
+    log_action(user.get("user_id") if user else None, "delete", record_type, str(record_id))
 
     # Built-in cascades:
     if record_type == "users":
@@ -212,6 +213,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserAccount(**data), "user_accounts", "mapping_id")
+        log_action(user_id, "cascade_delete", "account_membership", r["mapping_id"])
 
     # user_households
     uh_df = load_versions("user_households", UserHousehold)
@@ -225,6 +227,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserHousehold(**data), "user_households", "mapping_id")
+        log_action(user_id, "cascade_delete", "household_membership", r["mapping_id"])
 
     # refresh_tokens (invalidate)
     rt_df = load_versions("refresh_tokens", RefreshToken)
@@ -271,3 +274,15 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         data = row.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(Entry(**data), "entries", "entry_id")
+        log_action(user_id if user_id else None, "cascade_delete", "entries", row["entry_id"])
+
+def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
+    from app.models.schemas import AuditLog
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        details=details,
+    )
+    save_version(entry, "audit_logs", "log_id")
