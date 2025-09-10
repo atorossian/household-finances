@@ -25,7 +25,7 @@ def create_account(payload: Account, user=Depends(get_current_user)):
     # Automatically assign the creator as a member
     mapping = UserAccount(user_id=user["user_id"], account_id=account.account_id)
     save_version(mapping, "user_accounts", "mapping_id")
-    log_action(user["user_id"], "assign_user", "accounts", str(account.account_id), {"user_id": str(payload.user_id)})
+    log_action(user["user_id"], "assign_user", "accounts", str(account.account_id), {"user_id": str(user["user_id"])})
 
     return {"message": "Account created", "account_id": str(account.account_id)}
 

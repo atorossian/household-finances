@@ -23,7 +23,7 @@ def create_household(payload: Household, user=Depends(get_current_user)):
     # Automatically assign the creator as a member
     mapping = UserHousehold(user_id=user["user_id"], household_id=household.household_id)
     save_version(mapping, "user_households", "mapping_id")
-    log_action(user["user_id"], "assign_user", "households", str(household.household_id), {"user_id": str(user.user_id)})
+    log_action(user["user_id"], "assign_user", "households", str(household.household_id), {"user_id": str(user["user_id"])})
 
     return {"message": "Household created", "household_id": str(household.household_id)}
 
