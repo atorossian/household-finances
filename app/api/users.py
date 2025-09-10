@@ -171,3 +171,18 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
         mark_old_version_as_stale("refresh_tokens", token["refresh_token_id"], "refresh_token_id")
 
     return {"message": "Password changed successfully. Please log in again."}
+
+@router.get("/{user_id}")
+def get_user(user_id: str, user=Depends(get_current_user)):
+    df = load_versions("users", User)
+
+    match = df[
+        (df["user_id"] == str(user_id)) &
+        (df["is_current"]) &
+        (~df.get("is_deleted", False).fillna(False))
+    ]
+
+    if match.empty:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return match.iloc[0].to_dict()
