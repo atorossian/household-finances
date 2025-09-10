@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Type, Optional
 from fastapi import HTTPException
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account
+from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
@@ -202,7 +202,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
     """Mark user_accounts, user_households and refresh_tokens as deleted for this user."""
     # user_accounts
     try:
-        ua_df = load_versions("user_accounts")
+        ua_df = load_versions("user_accounts", UserAccount)
     except Exception:
         ua_df = pd.DataFrame()
 
@@ -219,7 +219,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
 
     # user_households
     try:
-        uh_df = load_versions("user_households")
+        uh_df = load_versions("user_households", UserHousehold)
     except Exception:
         uh_df = pd.DataFrame()
 
@@ -236,7 +236,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
 
     # refresh_tokens (invalidate)
     try:
-        rt_df = load_versions("refresh_tokens")
+        rt_df = load_versions("refresh_tokens", RefreshToken)
     except Exception:
         rt_df = pd.DataFrame()
 
