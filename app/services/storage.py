@@ -5,7 +5,7 @@ import json
 import io
 import pyarrow as pa
 import botocore
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import pyarrow.dataset as ds
 import pandas as pd
 from typing import Type, Optional
@@ -284,7 +284,7 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
     for k, v in (details or {}).items():
         if isinstance(v, UUID):
             normalized[k] = str(v)
-        elif isinstance(v, datetime):
+        elif isinstance(v, (datetime, date)):
             normalized[k] = v.isoformat()
         else:
             normalized[k] = v
