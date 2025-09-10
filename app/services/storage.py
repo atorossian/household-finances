@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 import pyarrow.parquet as pq
 import boto3
+import json
 import io
 import pyarrow as pa
 import botocore
@@ -287,6 +288,8 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
             normalized[k] = v.isoformat()
         else:
             normalized[k] = v
+
+    details_json = json.dumps(normalized) 
 
     entry = AuditLog(
         user_id=user_id,
