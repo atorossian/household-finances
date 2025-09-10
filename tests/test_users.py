@@ -80,8 +80,8 @@ def test_register_login_update_change_password(client: TestClient):
     assert r.status_code == 404  # deleted users should not resolve
 
     # Verify deleted user has no memberships left
-    r = client.get("/accounts/", headers=headers)
-    assert all("user_id" not in a or a["user_id"] != user_id for a in r.json())
+    r = client.get("/accounts/memberships", headers=headers)
+    assert all(m["user_id"] != user_id for m in r.json())
 
-    r = client.get("/households/", headers=headers)
-    assert all("user_id" not in h or h["user_id"] != user_id for h in r.json())
+    r = client.get("/households/memberships", headers=headers)
+    assert all(m["user_id"] != user_id for m in r.json())

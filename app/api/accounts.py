@@ -88,3 +88,18 @@ def assign_account_to_user(user_id: UUID, account_id: UUID):
     )
     save_version(updated, "users", "user_id")
     return {"message": "User assigned to account", "user_id": str(user_id), "account_id": str(account_id)}
+
+@router.get("/memberships")
+def list_account_memberships(user=Depends(get_current_user)):
+    df = load_versions("user_accounts", UserAccount)
+
+    if df.empty:
+        return []
+
+    # Filter current + not deleted memberships
+    df = df[
+        (df["is_current"]) &
+        (~df.get("is_deleted", False).fillna(False))
+    ]
+
+    return df.to_dict(orient="records")
