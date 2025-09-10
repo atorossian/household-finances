@@ -104,7 +104,12 @@ def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
 @router.get("/")
 def list_current_entries(user=Depends(get_current_user)):
     df = load_versions("entries", Entry)
-    current = df[(df["is_current"]) & (df["description"] != "deleted")]
+    current = df[
+        (df["is_current"]) &
+        (~df.get("is_deleted", False).fillna(False)) &
+        (df["user_id"] == str(user["user_id"]))
+    ]
+    
     return current.sort_values(by="updated_at", ascending=False).to_dict(orient="records")
 
 
