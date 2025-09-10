@@ -47,9 +47,9 @@ def test_audit_log_partitioning(client):
 
     # --- Fetch logs using the API (authorized) ---
     r = client.get("/audit/logs", params={"user_id": user_id}, headers=headers)
-    print("Audit logs returned:", logs)
     assert r.status_code == 200
     logs = r.json()
+    print("Audit logs returned:", logs)
     assert len(logs) > 0
 
     # --- Validate today’s date is present ---
