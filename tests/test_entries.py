@@ -72,13 +72,13 @@ def test_entries_full_lifecycle(client: TestClient):
     assert len(history) == 2
     assert history[0]["description"] == "Groceries updated"
 
-    # --- Soft delete entry ---
-    r = client.post(f"/entries/{entry_id}/delete", headers=headers)
+    # Delete entry
+    r = client.delete(f"/entries/{entry_id}", headers=headers)
     assert r.status_code == 200
 
-    # --- List entries again (deleted one should not appear) ---
+    # Verify via GET — deleted entry should not appear in list
     r = client.get("/entries/", headers=headers)
     assert r.status_code == 200
-    entries_after = r.json()
-    assert all(e["entry_id"] != entry_id for e in entries_after)
+    entries = r.json()
+    assert all(e["entry_id"] != entry_id for e in entries)
 
