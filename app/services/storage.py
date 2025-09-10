@@ -251,7 +251,8 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     """
 
     entries_df = load_versions("entries", Entry)
-
+    debt_name = debt_row.get("name", "")
+    user_id = debt_row.get("user_id")
     # If entries include debt_id column, prefer that
     if "debt_id" in entries_df.columns:
         sel = entries_df[
@@ -261,8 +262,6 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         ]
     else:
         # fallback: match by description (best-effort)
-        debt_name = debt_row.get("name", "")
-        user_id = debt_row.get("user_id")
         sel = entries_df[
             (entries_df["description"].str.contains(str(debt_name), na=False)) &
             (entries_df["user_id"] == str(user_id)) &
