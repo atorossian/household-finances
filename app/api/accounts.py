@@ -66,7 +66,7 @@ def list_accounts():
     return current.to_dict(orient="records")
 
 
-@router.get("   /{account_id}")
+@router.get("/{account_id}")
 def get_account(account_id: UUID):
     accounts = load_versions("accounts", Account)
     record = accounts[(accounts["account_id"] == str(account_id)) & (accounts["is_current"])]
