@@ -275,7 +275,7 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         data = row.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(Entry(**data), "entries", "entry_id")
-        log_action(user_id if user_id else None, "cascade_delete", "entries", row["entry_id"])
+        log_action(user_id, "cascade_delete", "entries", row["entry_id"])
 
 def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
 
