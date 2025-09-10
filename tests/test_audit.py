@@ -2,10 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from uuid import uuid4
 import pandas as pd
-import io
 from datetime import date, datetime, timezone
-from app.services import storage
-from app.models.schemas import AuditLog
 
 def test_audit_logs(client: TestClient):
     # Register user
@@ -28,9 +25,7 @@ def test_audit_logs(client: TestClient):
     assert any(l["action"] == "register" and l["resource_type"] == "users" for l in logs)
     assert any(l["action"] == "create" and l["resource_type"] == "households" for l in logs)
 
-from uuid import uuid4
-from datetime import datetime, timezone
-import pandas as pd
+
 
 def test_audit_log_partitioning(client):
     # --- Register user (this generates an audit log) ---
@@ -52,6 +47,7 @@ def test_audit_log_partitioning(client):
 
     # --- Fetch logs using the API (authorized) ---
     r = client.get("/audit/logs", params={"user_id": user_id}, headers=headers)
+    print("Audit logs returned:", logs)
     assert r.status_code == 200
     logs = r.json()
     assert len(logs) > 0
