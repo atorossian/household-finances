@@ -148,7 +148,7 @@ class AuditLog(BaseModel):
     action: str                      # "create", "update", "delete", "login", etc.
     resource_type: str               # "users", "accounts", "entries", etc.
     resource_id: str | None = None   # affected record
-    details: dict | None = None      # request payload, old vs. new values, etc.
+    details: str | None = None      # request payload, old vs. new values, etc.
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
