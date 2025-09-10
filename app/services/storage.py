@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Type, Optional
 from fastapi import HTTPException
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken
+from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
@@ -277,7 +277,17 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         log_action(user_id if user_id else None, "cascade_delete", "entries", row["entry_id"])
 
 def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
-    from app.models.schemas import AuditLog
+
+    # Normalize details: convert UUIDs and datetimes to strings
+    normalized = {}
+    for k, v in (details or {}).items():
+        if isinstance(v, UUID):
+            normalized[k] = str(v)
+        elif isinstance(v, datetime):
+            normalized[k] = v.isoformat()
+        else:
+            normalized[k] = v
+
     entry = AuditLog(
         user_id=user_id,
         action=action,
