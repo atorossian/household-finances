@@ -28,8 +28,12 @@ def test_audit_logs(client: TestClient):
     assert any(l["action"] == "register" and l["resource_type"] == "users" for l in logs)
     assert any(l["action"] == "create" and l["resource_type"] == "households" for l in logs)
 
+from uuid import uuid4
+from datetime import datetime, timezone
+import pandas as pd
+
 def test_audit_log_partitioning(client):
-    # Trigger an action that generates an audit log
+    # --- Register user (this generates an audit log) ---
     payload = {
         "email": f"partition-{uuid4().hex[:6]}@example.com",
         "user_name": "puser",
@@ -39,17 +43,23 @@ def test_audit_log_partitioning(client):
     assert r.status_code == 200
     user_id = r.json()["user_id"]
 
-    # Fetch logs using the API
-    r = client.get("/audit/logs", params={"user_id": user_id})
+    # --- Login to get access token ---
+    login_payload = {"email": payload["email"], "password": payload["password"]}
+    r = client.post("/users/login", json=login_payload)
+    assert r.status_code == 200
+    tokens = r.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    # --- Fetch logs using the API (authorized) ---
+    r = client.get("/audit/logs", params={"user_id": user_id}, headers=headers)
     assert r.status_code == 200
     logs = r.json()
     assert len(logs) > 0
 
-    # Validate at least one log has today's date
+    # --- Validate today’s date is present ---
     now = datetime.now(timezone.utc).date()
     timestamps = [pd.to_datetime(log["timestamp"]).date() for log in logs]
     assert any(ts == now for ts in timestamps)
 
-    # Extra: validate the log contains action + resource_type
+    # --- Extra: confirm action + resource_type ---
     assert any(log["action"] == "register" and log["resource_type"] == "users" for log in logs)
-
