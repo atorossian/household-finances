@@ -32,7 +32,7 @@ def register_user(request: RegisterRequest):
     )
 
     save_version(new_user, "users", "user_id")
-    log_action(None, "register", "users", str(new_user.user_id), request.model_dump())
+    log_action(str(new_user.user_id), "register", "users", str(new_user.user_id), request.model_dump())
 
     return {
         "message": "User registered successfully",
