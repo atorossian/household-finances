@@ -102,7 +102,7 @@ def _empty_df(schema):
 
 def load_versions(
     record_type: str,
-    model_class,
+    schema,
     record_id: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None
