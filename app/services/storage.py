@@ -209,7 +209,6 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         (~ua_df.get("is_deleted", False).fillna(False))
     ].iterrows():
         mark_old_version_as_stale("user_accounts", r["mapping_id"], "mapping_id")
-        from app.models.schemas import UserAccount
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserAccount(**data), "user_accounts", "mapping_id")
@@ -223,7 +222,6 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         (~uh_df.get("is_deleted", False).fillna(False))
     ].iterrows():
         mark_old_version_as_stale("user_households", r["mapping_id"], "mapping_id")
-        from app.models.schemas import UserHousehold
         data = r.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(UserHousehold(**data), "user_households", "mapping_id")
