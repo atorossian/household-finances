@@ -201,10 +201,7 @@ def soft_delete_record(
 def _cascade_user_deletion(user_id: str, now: datetime):
     """Mark user_accounts, user_households and refresh_tokens as deleted for this user."""
     # user_accounts
-    try:
-        ua_df = load_versions("user_accounts", UserAccount)
-    except Exception:
-        ua_df = pd.DataFrame()
+    ua_df = load_versions("user_accounts", UserAccount)
 
     for _, r in ua_df[
         (ua_df["user_id"] == str(user_id)) &
@@ -218,10 +215,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         save_version(UserAccount(**data), "user_accounts", "mapping_id")
 
     # user_households
-    try:
-        uh_df = load_versions("user_households", UserHousehold)
-    except Exception:
-        uh_df = pd.DataFrame()
+    uh_df = load_versions("user_households", UserHousehold)
 
     for _, r in uh_df[
         (uh_df["user_id"] == str(user_id)) &
@@ -235,10 +229,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
         save_version(UserHousehold(**data), "user_households", "mapping_id")
 
     # refresh_tokens (invalidate)
-    try:
-        rt_df = load_versions("refresh_tokens", RefreshToken)
-    except Exception:
-        rt_df = pd.DataFrame()
+    rt_df = load_versions("refresh_tokens", RefreshToken)
 
     for _, r in rt_df[
         (rt_df["user_id"] == str(user_id)) &
@@ -256,7 +247,7 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     - If entries have 'debt_id' stored, use it.
     - Otherwise best-effort: match description containing debt.name and same user.
     """
-    from app.models.schemas import Entry
+
     entries_df = load_versions("entries", Entry)
 
     # If entries include debt_id column, prefer that

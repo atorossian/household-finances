@@ -30,6 +30,17 @@ def test_register_login_update_change_password(client: TestClient):
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
+    # --- Create household + account ---
+    household_payload = {"name": "Test Household"}
+    r = client.post("/households/", json=household_payload, headers=headers)
+    assert r.status_code == 200
+    household_id = r.json()["household_id"]
+
+    account_payload = {"name": "Test Account", "household_id": household_id, "user_id": user_id}
+    r = client.post("/accounts/", json=account_payload, headers=headers)
+    assert r.status_code == 200
+    account_id = r.json()["account_id"]
+
     # --- Update user info ---
     update_payload = {
         "email": "newemail@example.com",
