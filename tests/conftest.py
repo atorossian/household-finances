@@ -64,8 +64,7 @@ def another_auth_headers(client):
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 @pytest.fixture
-def another_user_id(client):
-    # Register a new user
+def another_user(client: TestClient):
     payload = {
         "email": f"another-{uuid4().hex[:6]}@example.com",
         "user_name": "anotheruser",
@@ -75,24 +74,28 @@ def another_user_id(client):
     assert r.status_code == 200
     user_id = r.json()["user_id"]
 
-    # Login to get token
-    login_payload = {"email": payload["email"], "password": payload["password"]}
-    r = client.post("/users/login", json=login_payload)
+    r = client.post("/users/login", json={"email": payload["email"], "password": payload["password"]})
     assert r.status_code == 200
     tokens = r.json()
-
-    # Return both user_id and headers
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
     return user_id, headers
 
 
 @pytest.fixture
-def third_user_id(client):
-    email = f"user3-{uuid4().hex[:6]}@example.com"
-    payload = {"email": email, "user_name": "user3", "password": "Test123!"}
-    client.post("/users/register", json=payload)
-    r = client.post("/users/login", json={"email": email, "password": "Test123!"})
+def third_user(client: TestClient):
+    payload = {
+        "email": f"third-{uuid4().hex[:6]}@example.com",
+        "user_name": "thirduser",
+        "password": "Third123!"
+    }
+    r = client.post("/users/register", json=payload)
+    assert r.status_code == 200
+    user_id = r.json()["user_id"]
+
+    r = client.post("/users/login", json={"email": payload["email"], "password": payload["password"]})
+    assert r.status_code == 200
     tokens = r.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-    r = client.get("/users/me", headers=headers)
-    return r.json()["user_id"]
+
+    return user_id, headers
