@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Household, User, UserHousehold
+from app.models.schemas import Household, User, UserHousehold, HouseholdCreate
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
 from app.services.roles import require_household_admin, get_membership
@@ -9,7 +9,7 @@ from app.services.roles import require_household_admin, get_membership
 router = APIRouter()
 
 @router.post("/")
-def create_household(payload: Household, user=Depends(get_current_user)):
+def create_household(payload: HouseholdCreate, user=Depends(get_current_user)):
     
     # Enforce one household per creator
     hh = load_versions("households", Household)

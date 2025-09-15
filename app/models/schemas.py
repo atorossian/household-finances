@@ -177,3 +177,5 @@ class PasswordResetToken(BaseModel):
     used: bool = False
     created_at: datetime
 
+class HouseholdCreate(BaseModel):
+    name: str
