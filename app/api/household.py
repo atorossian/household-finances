@@ -23,6 +23,7 @@ def create_household(payload: Household, user=Depends(get_current_user)):
     household = Household(
         household_id=uuid4(),
         name=payload.name,
+        created_by_user_id=user["user_id"],
         created_at=now,
         updated_at=now,
         is_current=True,
