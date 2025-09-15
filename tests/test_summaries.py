@@ -118,3 +118,4 @@ def test_summary_trends(client: TestClient):
     assert "category_trends" in result
     assert any(trend["type"] == "expense" for trend in result["type_trends"])
     assert any(trend["type"] == "income" for trend in result["type_trends"])
+
