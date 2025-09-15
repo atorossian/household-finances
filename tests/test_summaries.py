@@ -58,7 +58,11 @@ def test_summary_flow(client: TestClient):
 
 def test_summary_trends(client: TestClient):
     # --- Register + login ---
-    register_payload = {"email": f"trend-{uuid4().hex[:6]}@example.com", "user_name": "trenduser", "password": "Trend123!"}
+    register_payload = {
+        "email": f"trend-{uuid4().hex[:6]}@example.com",
+        "user_name": "trenduser",
+        "password": "Trend123!"
+    }
     r = client.post("/users/register", json=register_payload)
     user_id = r.json()["user_id"]
 
@@ -70,8 +74,14 @@ def test_summary_trends(client: TestClient):
     r = client.post("/households/", json={"name": "Trend Household"}, headers=headers)
     household_id = r.json()["household_id"]
 
-    r = client.post("/accounts/", json={"name": "Trend Account", "household_id": household_id, "user_id": user_id}, headers=headers)
+    r = client.post("/accounts/", json={"name": "Trend Account", "household_id": household_id}, headers=headers)
     account_id = r.json()["account_id"]
+
+    # --- Assign user to account ---
+    r = client.post(f"/accounts/{account_id}/assign-user",
+                    params={"target_user_id": user_id},
+                    headers=headers)
+    assert r.status_code == 200
 
     # --- Two entries in different categories + months ---
     entry1 = {
@@ -106,7 +116,5 @@ def test_summary_trends(client: TestClient):
 
     assert "type_trends" in result
     assert "category_trends" in result
-    assert any("groceries" in d for d in result["category_trends"])
-    assert any("salary" in d for d in result["category_trends"])
-
-
+    assert any(trend["type"] == "expense" for trend in result["type_trends"])
+    assert any(trend["type"] == "income" for trend in result["type_trends"])
