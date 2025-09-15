@@ -64,9 +64,27 @@ def another_auth_headers(client):
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 @pytest.fixture
-def another_user_id(client, another_auth_headers):
-    r = client.get("/users/me", headers=another_auth_headers)
-    return r.json()["user_id"]
+def another_user_id(client):
+    # Register a new user
+    payload = {
+        "email": f"another-{uuid4().hex[:6]}@example.com",
+        "user_name": "anotheruser",
+        "password": "Another123!"
+    }
+    r = client.post("/users/register", json=payload)
+    assert r.status_code == 200
+    user_id = r.json()["user_id"]
+
+    # Login to get token
+    login_payload = {"email": payload["email"], "password": payload["password"]}
+    r = client.post("/users/login", json=login_payload)
+    assert r.status_code == 200
+    tokens = r.json()
+
+    # Return both user_id and headers
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    return user_id, headers
+
 
 @pytest.fixture
 def third_user_id(client):
