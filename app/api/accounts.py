@@ -20,7 +20,6 @@ def create_account(payload: Account, user=Depends(get_current_user)):
         account_id=uuid4(),
         name=payload.name,
         household_id=payload.household_id,
-        user_id=None,
         created_at=now,
         updated_at=now,
         is_current=True,
@@ -33,37 +32,28 @@ def create_account(payload: Account, user=Depends(get_current_user)):
 
 @router.post("/{account_id}/assign-user")
 def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
-    # Load account
     acc_df = load_versions("accounts", Account)
     cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
 
-    # Only household admin or superuser can assign
     require_household_admin(user, acc["household_id"], is_superuser=user.get("is_superuser", False))
 
-    # Ensure the assignee is a member of the same household
     mem = get_membership(str(target_user_id), acc["household_id"])
     if not mem:
         raise HTTPException(status_code=400, detail="Assignee must be a member of the household")
 
-    # Enforce one user per account (we allow re-assignment by admin)
-    now = datetime.now(timezone.utc)
-    mark_old_version_as_stale("accounts", str(account_id), "account_id")
-    updated = Account(
-        account_id=account_id,
-        name=acc["name"],
-        household_id=acc["household_id"],
-        user_id=target_user_id,
-        created_at=acc["created_at"],
-        updated_at=now,
-        is_current=True,
-        is_deleted=False,
-    )
-    save_version(updated, "accounts", "account_id")
+    # Mark previous mapping as stale (enforce 1 user per account)
+    ua = load_versions("user_accounts", UserAccount)
+    existing = ua[(ua["account_id"] == str(account_id)) & (ua["is_current"]) & (~ua["is_deleted"].fillna(False))]
+    for _, row in existing.iterrows():
+        mark_old_version_as_stale("user_accounts", row["mapping_id"], "mapping_id")
+        row_dict = row.to_dict()
+        row_dict.update({"updated_at": datetime.now(timezone.utc), "is_current": True, "is_deleted": True})
+        save_version(UserAccount(**row_dict), "user_accounts", "mapping_id")
 
-    # optional: also keep a UserAccount mapping for quick listing (role=member by default)
+    # Add new mapping
     mapping = UserAccount(user_id=target_user_id, account_id=account_id, role="member")
     save_version(mapping, "user_accounts", "mapping_id")
 

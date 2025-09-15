@@ -53,6 +53,8 @@ def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get
 
 @router.put("/{household_id}")
 def update_household(household_id: UUID, name: str, user=Depends(get_current_user)):
+
+    require_household_admin(user, str(household_id), is_superuser=user.get("is_superuser", False))
     mark_old_version_as_stale("households", household_id, "household_id")
     households = load_versions("households", Household)
     current = households[households["household_id"] == str(household_id)].iloc[-1].to_dict()
@@ -71,6 +73,7 @@ def update_household(household_id: UUID, name: str, user=Depends(get_current_use
 
 @router.delete("/{household_id}")
 def delete_household(household_id: UUID, user=Depends(get_current_user)):
+    require_household_admin(user, str(household_id), is_superuser=user.get("is_superuser", False))
     return soft_delete_record(
         "households", str(household_id), "household_id", Household,
         user=user, owner_field="user_id", require_owner=True

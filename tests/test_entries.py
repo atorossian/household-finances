@@ -31,6 +31,7 @@ def test_entries_full_lifecycle(client: TestClient):
     r = client.post("/accounts/", json=account_payload, headers=headers)
     assert r.status_code == 200
     account_id = r.json()["account_id"]
+    client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
 
     # --- Assign user to account ---
     r = client.post(f"/accounts/{account_id}/assign-user",

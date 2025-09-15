@@ -97,7 +97,6 @@ class Household(BaseModel):
 class Account(BaseModel):
     account_id: UUID = Field(default_factory=uuid4)
     name: str
-    user_id: Optional[UUID] = None  # allow assign later
     household_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -110,6 +109,7 @@ class UserAccount(BaseModel):
     account_id: UUID
     role: Role = "member" 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
 

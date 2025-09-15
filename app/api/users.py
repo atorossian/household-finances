@@ -69,9 +69,12 @@ def login_user(request: LoginRequest):
         & (~users_df["is_deleted"])
     ]
 
+    if row.empty:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.checkpw(request.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
+    if not bcrypt.checkpw(request.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     if is_password_expired(user):
@@ -98,6 +101,8 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     mark_old_version_as_stale("users", user_id, "user_id")
 
     normalized_email = normalize_email(update.email) if update.email else None
+    if normalized_email and normalized_email in users_df["email"].values:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
     salt = bcrypt.gensalt()
@@ -306,7 +311,7 @@ def reset_password(email: str, otp_code: str, new_password: str):
     salt = bcrypt.gensalt()
     updated_user = User(
         **{k: match.iloc[0][k] for k in User.model_fields if k in match.iloc[0]},
-        hashed_password=bcrypt.hashpw(new_password.encode("utf-8"), salt).decode("utf-8"),
+        hashed_password=bcrypt.hashpw(new_password.encode("utf-8"), salt),
         updated_at=datetime.now(timezone.utc),
         password_changed_at=datetime.now(timezone.utc),
         is_current=True,
@@ -357,6 +362,8 @@ def get_user(user_id: str, user=Depends(get_current_user)):
 
 @router.post("/{user_id}/suspend")
 def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
+    if not admin.get("is_superuser", False):
+        raise HTTPException(status_code=403, detail="Not authorized to suspend users")
     users = load_versions("users", User)
     match = users[(users["user_id"] == str(user_id)) & (users["is_current"]) & (~users["is_deleted"])]
 

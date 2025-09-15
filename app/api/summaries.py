@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
-from app.models.schemas import Entry, Account, Household
+from app.models.schemas import Entry, Account, Household, UserHousehold
 
 router = APIRouter()
 
@@ -18,11 +18,24 @@ def get_entry_summary(
     df = load_versions("entries", Entry)
 
     # --- Base filter ---
-    df = df[
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False)) &
-        (df["user_id"] == str(user["user_id"]))
-    ]
+    if user.get("is_superuser", False):
+        # superuser sees all entries
+        df = df[(df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    else:
+        # check household memberships
+        households = load_versions("user_households", UserHousehold)
+        user_households = households[
+            (households["user_id"] == str(user["user_id"])) &
+            (households["is_current"]) &
+            (~households["is_deleted"].fillna(False))
+        ]
+        allowed_household_ids = user_households["household_id"].unique().tolist()
+        df = df[
+            (df["is_current"]) &
+            (~df["is_deleted"].fillna(False)) &
+            (df["household_id"].isin(allowed_household_ids))
+        ]
+
     if df.empty:
         return {"message": "No entries available"}
 
