@@ -32,6 +32,10 @@ def register_user(request: RegisterRequest):
     
     validate_password_strength(request.password)
 
+    # Check if email matches bootstrap superuser email
+    bootstrap_email = os.getenv("BOOTSTRAP_SUPERUSER_EMAIL", "").lower()
+    is_superuser = request.email.lower() == bootstrap_email
+
     salt = bcrypt.gensalt()
     new_user = User(
         user_id=uuid4(),
@@ -42,7 +46,8 @@ def register_user(request: RegisterRequest):
         updated_at=datetime.now(timezone.utc),
         is_current=True,
         is_deleted=False,
-        is_active=True
+        is_active=True,
+        is_superuser=is_superuser,
     )
 
     save_version(new_user, "users", "user_id")
@@ -401,6 +406,6 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
 
     save_version(updated, "users", "user_id")
     on_user_unsuspended(str(user_id), admin["user_id"])
-    
+
     return {"message": "User unsuspended", "user_id": str(user_id)}
 

@@ -4,16 +4,27 @@ from datetime import datetime, timezone
 from app.models.schemas import Household, User, UserHousehold
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
+from app.services.roles import require_household_admin, get_membership
 
 router = APIRouter()
 
 @router.post("/")
 def create_household(payload: Household, user=Depends(get_current_user)):
+    
+    # Enforce one household per creator
+    hh = load_versions("households", Household)
+    existing = hh[(hh.get("created_by_user_id") == str(user["user_id"])) &
+                  (hh["is_current"]) &
+                  (~hh.get("is_deleted", False).fillna(False))]
+    if not existing.empty:
+        raise HTTPException(status_code=400, detail="User already created a household")
+
+    now = datetime.now(timezone.utc)
     household = Household(
         household_id=uuid4(),
         name=payload.name,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=now,
+        updated_at=now,
         is_current=True,
         is_deleted=False,
     )
@@ -21,7 +32,11 @@ def create_household(payload: Household, user=Depends(get_current_user)):
     log_action(user["user_id"], "create", "households", str(household.household_id), payload.model_dump())
 
     # Automatically assign the creator as a member
-    mapping = UserHousehold(user_id=user["user_id"], household_id=household.household_id)
+    mapping = UserHousehold(
+        user_id=user["user_id"], 
+        household_id=household.household_id,
+        role="admin",
+        )
     save_version(mapping, "user_households", "mapping_id")
     log_action(user["user_id"], "assign_user", "households", str(household.household_id), {"user_id": str(user["user_id"])})
 
@@ -91,3 +106,31 @@ def get_household(household_id: UUID, user=Depends(get_current_user)):
     
     log_action(user["user_id"], "get", "households", str(household_id))
     return record.iloc[0].to_dict()
+
+@router.post("/{household_id}/members")
+def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", user=Depends(get_current_user)):
+    require_household_admin(user, str(household_id))
+    now = datetime.now(timezone.utc)
+    mapping = UserHousehold(user_id=target_user_id, household_id=household_id, role=role)
+    save_version(mapping, "user_households", "mapping_id")
+    log_action(user["user_id"], "add_member", "households", str(household_id), {"user_id": str(target_user_id), "role": role})
+    return {"message": "Member added"}
+
+@router.delete("/{household_id}/members/{target_user_id}")
+def remove_member(household_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
+    require_household_admin(user, str(household_id))
+    df = load_versions("user_households", UserHousehold)
+    cur = df[(df["user_id"] == str(target_user_id)) &
+             (df["household_id"] == str(household_id)) &
+             (df["is_current"]) &
+             (~df.get("is_deleted", False).fillna(False))]
+    if cur.empty:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    row = cur.iloc[0]
+    mark_old_version_as_stale("user_households", row["mapping_id"], "mapping_id")
+    # save a deleted version
+    deleted = row.to_dict()
+    deleted.update({"is_current": True, "is_deleted": True, "updated_at": datetime.now(timezone.utc)})
+    save_version(UserHousehold(**deleted), "user_households", "mapping_id")
+    log_action(user["user_id"], "remove_member", "households", str(household_id), {"user_id": str(target_user_id)})
+    return {"message": "Member removed"}

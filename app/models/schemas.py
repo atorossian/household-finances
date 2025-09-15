@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field, EmailStr
-from app.models.enums import EntryType, Category
+from app.models.enums import EntryType, Category, Role
 from uuid import UUID, uuid4
 from datetime import datetime, timezone, date
-
+from typing import Optional
 
 class Entry(BaseModel):
     entry_id: UUID = Field(default_factory=uuid4)
@@ -88,6 +88,7 @@ class UserUpdateRequest(BaseModel):
 class Household(BaseModel):
     household_id: UUID = Field(default_factory=uuid4)
     name: str
+    created_by_user_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
@@ -96,7 +97,7 @@ class Household(BaseModel):
 class Account(BaseModel):
     account_id: UUID = Field(default_factory=uuid4)
     name: str
-    user_id: UUID
+    user_id: Optional[UUID] = None  # allow assign later
     household_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -107,7 +108,7 @@ class UserAccount(BaseModel):
     mapping_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     account_id: UUID
-    role: str
+    role: Role = "member" 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
@@ -116,8 +117,9 @@ class UserHousehold(BaseModel):
     mapping_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
     household_id: UUID
-    role: str
+    role: Role = "member" 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_current: bool = True
     is_deleted: bool = False
 

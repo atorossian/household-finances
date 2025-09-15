@@ -4,37 +4,72 @@ from datetime import datetime, timezone
 from app.models.schemas import Account, Household, User, UserAccount
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user
+from app.services.roles import require_household_admin, get_membership
 
 router = APIRouter()
 
 
 @router.post("/")
 def create_account(payload: Account, user=Depends(get_current_user)):
+
+    # Only household admin or superuser can create accounts in this household
+    require_household_admin(user, str(payload.household_id), is_superuser=user.get("is_superuser", False))
+
+    now = datetime.now(timezone.utc)
     account = Account(
         account_id=uuid4(),
         name=payload.name,
         household_id=payload.household_id,
-        user_id=payload.user_id,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        user_id=None,
+        created_at=now,
+        updated_at=now,
         is_current=True,
         is_deleted=False,
     )
     save_version(account, "accounts", "account_id")
     log_action(user["user_id"], "create", "accounts", str(account.account_id), payload.model_dump())
-    # Automatically assign the creator as a member
-    mapping = UserAccount(user_id=user["user_id"], account_id=account.account_id)
-    save_version(mapping, "user_accounts", "mapping_id")
-    log_action(user["user_id"], "assign_user", "accounts", str(account.account_id), {"user_id": str(user["user_id"])})
 
     return {"message": "Account created", "account_id": str(account.account_id)}
 
-@router.post("/assign-user-to-account")
-def assign_user_to_account(user_id: UUID, account_id: UUID, user=Depends(get_current_user)):
-    mapping = UserAccount(user_id=user_id, account_id=account_id)
+@router.post("/{account_id}/assign-user")
+def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
+    # Load account
+    acc_df = load_versions("accounts", Account)
+    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    if cur.empty:
+        raise HTTPException(status_code=404, detail="Account not found")
+    acc = cur.iloc[0].to_dict()
+
+    # Only household admin or superuser can assign
+    require_household_admin(user, acc["household_id"], is_superuser=user.get("is_superuser", False))
+
+    # Ensure the assignee is a member of the same household
+    mem = get_membership(str(target_user_id), acc["household_id"])
+    if not mem:
+        raise HTTPException(status_code=400, detail="Assignee must be a member of the household")
+
+    # Enforce one user per account (we allow re-assignment by admin)
+    now = datetime.now(timezone.utc)
+    mark_old_version_as_stale("accounts", str(account_id), "account_id")
+    updated = Account(
+        account_id=account_id,
+        name=acc["name"],
+        household_id=acc["household_id"],
+        user_id=target_user_id,
+        created_at=acc["created_at"],
+        updated_at=now,
+        is_current=True,
+        is_deleted=False,
+    )
+    save_version(updated, "accounts", "account_id")
+
+    # optional: also keep a UserAccount mapping for quick listing (role=member by default)
+    mapping = UserAccount(user_id=target_user_id, account_id=account_id, role="member")
     save_version(mapping, "user_accounts", "mapping_id")
-    log_action(user["user_id"], "assign_user", "accounts", str(account_id), {"user_id": str(user_id)})
-    return {"message": "User assigned to account"}
+
+    log_action(user["user_id"], "assign_user", "accounts", str(account_id), {"user_id": str(target_user_id)})
+    return {"message": "Account assigned", "account_id": str(account_id), "user_id": str(target_user_id)}
+
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
@@ -57,11 +92,21 @@ def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
 
 @router.delete("/{account_id}")
 def delete_account(account_id: UUID, user=Depends(get_current_user)):
+    # Only admin of the household (or superuser)
+    acc_df = load_versions("accounts", Account)
+    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    if cur.empty:
+        raise HTTPException(status_code=404, detail="Account not found")
+    acc = cur.iloc[0].to_dict()
 
-    return soft_delete_record(
+    require_household_admin(user, acc["household_id"], is_superuser=user.get("is_superuser", False))
+
+    resp = soft_delete_record(
         "accounts", str(account_id), "account_id", Account,
-        user=user, owner_field="user_id", require_owner=True
+        user=user, owner_field="user_id", require_owner=False  # ownership enforced by role above
     )
+    log_action(user["user_id"], "delete", "accounts", str(account_id))
+    return resp
 
 
 @router.get("/")

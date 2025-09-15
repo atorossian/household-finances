@@ -58,10 +58,8 @@ def send_email(recipient: str, subject: str, body: str) -> bool:
     except ClientError as e:
         print(f"SES send_email error: {e}")
         return False
-
-
-from fastapi import Depends, HTTPException
-
+    
+# Role-based access control dependency
 def require_role(allowed_roles: list[str], user=Depends(get_current_user), resource=None):
     if user.get("is_superuser"):
         return user  # bypass all checks

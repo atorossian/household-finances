@@ -5,6 +5,7 @@ from moto import mock_aws
 import boto3
 import app.main as app
 from app.config import config
+from uuid import uuid4
 
 
 def _empty_bucket(s3, bucket_name: str):
@@ -42,3 +43,38 @@ def clean_bucket(setup_s3):
 @pytest.fixture(scope="function")
 def client():
     return TestClient(app.app)
+
+
+@pytest.fixture
+def auth_headers(client):
+    email = f"user-{uuid4().hex[:6]}@example.com"
+    payload = {"email": email, "user_name": "user1", "password": "Test123!"}
+    client.post("/users/register", json=payload)
+    r = client.post("/users/login", json={"email": email, "password": "Test123!"})
+    tokens = r.json()
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+@pytest.fixture
+def another_auth_headers(client):
+    email = f"user2-{uuid4().hex[:6]}@example.com"
+    payload = {"email": email, "user_name": "user2", "password": "Test123!"}
+    client.post("/users/register", json=payload)
+    r = client.post("/users/login", json={"email": email, "password": "Test123!"})
+    tokens = r.json()
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+@pytest.fixture
+def another_user_id(client, another_auth_headers):
+    r = client.get("/users/me", headers=another_auth_headers)
+    return r.json()["user_id"]
+
+@pytest.fixture
+def third_user_id(client):
+    email = f"user3-{uuid4().hex[:6]}@example.com"
+    payload = {"email": email, "user_name": "user3", "password": "Test123!"}
+    client.post("/users/register", json=payload)
+    r = client.post("/users/login", json={"email": email, "password": "Test123!"})
+    tokens = r.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    r = client.get("/users/me", headers=headers)
+    return r.json()["user_id"]
