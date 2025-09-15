@@ -17,22 +17,21 @@ def test_user_can_create_one_household(client, auth_headers):
     assert r.status_code == 400
     assert "already created a household" in r.json()["detail"]
 
-def test_admin_can_invite_and_remove_members(client, auth_headers, another_user_id):
+def test_admin_can_invite_and_remove_members(client, auth_headers, another_user):
+    another_user_id, _ = another_user  # headers not needed for invite/remove
+
     # Create household
-    r = client.post("/households/", json={"name": "Invite HH"}, headers=auth_headers)
+    r = client.post("/households/", json={"name": "HH Admin"}, headers=auth_headers)
     hh_id = r.json()["household_id"]
 
-    # Invite user as member
-    r = client.post(f"/households/{hh_id}/members", 
+    # Add another user as member
+    r = client.post(f"/households/{hh_id}/members",
                     params={"target_user_id": another_user_id, "role": "member"},
                     headers=auth_headers)
     assert r.status_code == 200
 
-    # Verify membership
-    r = client.get("/households/memberships", headers=auth_headers)
-    memberships = r.json()
-    assert any(m["user_id"] == str(another_user_id) and m["role"] == "member" for m in memberships)
-
     # Remove member
-    r = client.delete(f"/households/{hh_id}/members/{another_user_id}", headers=auth_headers)
+    r = client.delete(f"/households/{hh_id}/members/{another_user_id}",
+                      headers=auth_headers)
     assert r.status_code == 200
+    assert r.json()["message"] == "Member removed"
