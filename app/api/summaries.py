@@ -57,18 +57,27 @@ def get_entry_summary(
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-    # --- Trends ---
+   # --- Trends ---
     type_trends, category_trends = None, None
     if last_n_months or (start and end):
-        # Type-level trends (income vs expense vs net)
-        type_trends = df.groupby(["month", "type"])["amount"].sum().unstack(fill_value=0)
-        type_trends["net"] = type_trends.get("income", 0) - type_trends.get("expense", 0)
-        type_trends = type_trends.reset_index().to_dict(orient="records")
+        # Normalize month to string early
+        df["month"] = df["month"].astype(str)
+
+        # Type-level trends
+        type_trends = (
+            df.groupby(["month", "type"])["amount"]
+            .sum()
+            .reset_index()
+            .to_dict(orient="records")
+        )
 
         # Category-level trends
-        category_trends = df.groupby(["month", "category"])["amount"].sum().unstack(fill_value=0)
-        category_trends = category_trends.reset_index().to_dict(orient="records")
-
+        category_trends = (
+            df.groupby(["month", "category"])["amount"]
+            .sum()
+            .reset_index()
+            .to_dict(orient="records")
+        )
     return {
         "total": round(total, 2),
         "by_category": {k: round(v, 2) for k, v in by_category.items()},
