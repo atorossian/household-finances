@@ -113,6 +113,7 @@ def test_summary_trends(client: TestClient):
     # --- Get last 3 months summary ---
     r = client.get("/summaries/summary?last_n_months=3", headers=headers)
     result = r.json()
+    print(result)
 
     assert "type_trends" in result
     assert "category_trends" in result
