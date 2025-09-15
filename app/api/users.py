@@ -409,3 +409,11 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
 
     return {"message": "User unsuspended", "user_id": str(user_id)}
 
+@router.get("/me")
+def get_current_user_info(user=Depends(get_current_user)):
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "user_name": user["user_name"],
+        "is_active": user.get("is_active", True),
+    }
