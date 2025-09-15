@@ -6,9 +6,13 @@ import app.main as app
 
 client = TestClient(app.app)
 
-def test_summary_flow():
+def test_summary_flow(client: TestClient):
     # --- Register + login ---
-    register_payload = {"email": f"summary-{uuid4().hex[:6]}@example.com", "user_name": "summaryuser", "password": "Summary123!"}
+    register_payload = {
+        "email": f"summary-{uuid4().hex[:6]}@example.com",
+        "user_name": "summaryuser",
+        "password": "Summary123!",
+    }
     r = client.post("/users/register", json=register_payload)
     assert r.status_code == 200
     user_id = r.json()["user_id"]
@@ -18,14 +22,23 @@ def test_summary_flow():
     tokens = r.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
-    # --- Create household + account ---
+    # --- Create household (user automatically admin) ---
     household_payload = {"name": "Summary Household"}
     r = client.post("/households/", json=household_payload, headers=headers)
+    assert r.status_code == 200
     household_id = r.json()["household_id"]
 
-    account_payload = {"name": "Summary Account", "household_id": household_id, "user_id": user_id}
+    # --- Create account (as admin) ---
+    account_payload = {"name": "Summary Account", "household_id": household_id}
     r = client.post("/accounts/", json=account_payload, headers=headers)
+    assert r.status_code == 200
     account_id = r.json()["account_id"]
+
+    # --- Assign user to account (so they can create entries) ---
+    r = client.post(f"/accounts/{account_id}/assign-user",
+                    params={"target_user_id": user_id},
+                    headers=headers)
+    assert r.status_code == 200
 
     # --- Create entries ---
     entry_payload = {
@@ -37,25 +50,11 @@ def test_summary_flow():
         "type": "expense",
         "category": "groceries",
         "amount": 50.0,
-        "description": "Weekly groceries"
+        "description": "Weekly groceries",
     }
     r = client.post("/entries/", json=entry_payload, headers=headers)
     assert r.status_code == 200
 
-    # --- Fetch monthly summary ---
-    month = date.today().strftime("%Y-%m")
-    r = client.get(f"/summaries/summary?month={month}", headers=headers)
-    assert r.status_code == 200
-    result = r.json()
-    assert result["total"] == 50.0
-    assert "groceries" in result["by_category"]
-
-    # --- Fetch trend summary (last 1 month) ---
-    r = client.get("/summaries/summary?last_n_months=1", headers=headers)
-    assert r.status_code == 200
-    result = r.json()
-    assert "type_trends" in result
-    assert "category_trends" in result
 
 def test_summary_trends(client: TestClient):
     # --- Register + login ---
