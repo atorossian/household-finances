@@ -8,7 +8,7 @@ def test_user_can_create_one_household(client, auth_headers):
     hh_id = r.json()["household_id"]
 
     # Verify membership role = admin
-    r = client.get("/households/memberships", headers=auth_headers)
+    r = client.get("/households/", headers=auth_headers)
     memberships = r.json()
     assert any(m["household_id"] == hh_id and m["role"] == "admin" for m in memberships)
 
