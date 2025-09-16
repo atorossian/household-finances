@@ -98,29 +98,21 @@ def list_households(user=Depends(get_current_user)):
     log_action(user["user_id"], "list", "households", None, {"count": len(current)})
     return current.to_dict(orient="records")
 
-
 @router.get("/memberships")
 def list_household_memberships(user=Depends(get_current_user)):
     df = load_versions("user_households", UserHousehold)
-    # Only return households where user is a member
-    memberships = load_versions("user_households", UserHousehold)
-    memberships = memberships[(memberships["user_id"] == str(user["user_id"])) &
-                              (memberships["is_current"]) &
-                              (~memberships["is_deleted"].fillna(False))]
-    allowed_ids = set(memberships["household_id"])
 
     if df.empty:
         return []
-    current = current[current["household_id"].isin(allowed_ids)]
 
-    # Filter current + not deleted memberships
+    # Filter only current user + active memberships
     df = df[
+        (df["user_id"] == str(user["user_id"])) &
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
     log_action(user["user_id"], "list", "household_memberships", None, {"count": len(df)})
     return df.to_dict(orient="records")
-
 
 @router.get("/{household_id}")
 def get_household(household_id: UUID, user=Depends(get_current_user)):
