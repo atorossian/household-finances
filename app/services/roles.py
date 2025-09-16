@@ -20,7 +20,7 @@ def get_membership(user_id: str, household_id: str) -> dict | None:
     row = df.sort_values("weight", ascending=False).iloc[0].to_dict()
     return row
 
-def require_household_role(user: dict, household_id: str, min_role: str):
+def require_household_role(user: dict, household_id: str, required_role: str):
     """
     Check if user has at least the required role in the household.
     Superusers always pass.
@@ -30,8 +30,8 @@ def require_household_role(user: dict, household_id: str, min_role: str):
     
     mem = get_membership(str(user["user_id"]), str(household_id))
     if not mem:
-        raise HTTPException(status_code=403, detail=f"{min_role} role required for this household")
+        raise HTTPException(status_code=403, detail=f"{required_role} role required for this household")
 
-    if ROLE_WEIGHT[mem["role"]] < ROLE_WEIGHT[min_role]:
-        raise HTTPException(status_code=403, detail=f"{min_role} role required for this household")
+    if ROLE_WEIGHT[mem["role"]] < ROLE_WEIGHT[required_role]:
+        raise HTTPException(status_code=403, detail=f"{required_role} role required for this household")
 
