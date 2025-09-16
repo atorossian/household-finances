@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from app.models.schemas import Household, User, UserHousehold, HouseholdCreate
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
-from app.services.roles import require_household_admin, get_membership
+from app.services.roles import require_household_role, get_membership
 
 router = APIRouter()
 
@@ -45,6 +45,8 @@ def create_household(payload: HouseholdCreate, user=Depends(get_current_user)):
 
 @router.post("/assign-user-to-household")
 def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get_current_user)):
+
+    require_household_role(user, household_id, required_role="admin")
     mapping = UserHousehold(user_id=user_id, household_id=household_id)
     save_version(mapping, "user_households", "mapping_id")
     log_action(user["user_id"], "assign_user", "households", str(household_id), {"user_id": str(user_id)})
@@ -53,8 +55,7 @@ def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get
 
 @router.put("/{household_id}")
 def update_household(household_id: UUID, name: str, user=Depends(get_current_user)):
-
-    require_household_admin(user, str(household_id), is_superuser=user.get("is_superuser", False))
+    require_household_role(user, household_id, required_role="admin")
     mark_old_version_as_stale("households", household_id, "household_id")
     households = load_versions("households", Household)
     current = households[households["household_id"] == str(household_id)].iloc[-1].to_dict()
@@ -73,7 +74,8 @@ def update_household(household_id: UUID, name: str, user=Depends(get_current_use
 
 @router.delete("/{household_id}")
 def delete_household(household_id: UUID, user=Depends(get_current_user)):
-    require_household_admin(user, str(household_id), is_superuser=user.get("is_superuser", False))
+    require_household_role(user, household_id, required_role="admin")
+
     return soft_delete_record(
         "households", str(household_id), "household_id", Household,
         user=user, owner_field="user_id", require_owner=True
@@ -82,24 +84,19 @@ def delete_household(household_id: UUID, user=Depends(get_current_user)):
 @router.get("/")
 def list_households(user=Depends(get_current_user)):
     households = load_versions("households", Household)
-    current = households[(households["is_current"] == True) & (households["is_deleted"] == False)]
+    current = households[(households["is_current"]) & (~households["is_deleted"].fillna(False))]
+
+    # Only return households where user is a member
+    memberships = load_versions("user_households", UserHousehold)
+    memberships = memberships[(memberships["user_id"] == str(user["user_id"])) &
+                              (memberships["is_current"]) &
+                              (~memberships["is_deleted"].fillna(False))]
+    allowed_ids = set(memberships["household_id"])
+
+    current = current[current["household_id"].isin(allowed_ids)]
+
     log_action(user["user_id"], "list", "households", None, {"count": len(current)})
     return current.to_dict(orient="records")
-
-@router.get("/memberships")
-def list_household_memberships(user=Depends(get_current_user)):
-    df = load_versions("user_households", UserHousehold)
-
-    if df.empty:
-        return []
-
-    # Filter current + not deleted memberships
-    df = df[
-        (df["is_current"]) &
-        (~df.get("is_deleted", False).fillna(False))
-    ]
-    log_action(user["user_id"], "list", "household_memberships", None, {"count": len(df)})
-    return df.to_dict(orient="records")
 
 @router.get("/{household_id}")
 def get_household(household_id: UUID, user=Depends(get_current_user)):
@@ -107,14 +104,14 @@ def get_household(household_id: UUID, user=Depends(get_current_user)):
     record = households[(households["household_id"] == str(household_id)) & (households["is_current"])]
     if record.empty:
         raise HTTPException(status_code=404, detail="Household not found")
-    
+    require_household_role(user, str(household_id), required_role="member")
     log_action(user["user_id"], "get", "households", str(household_id))
     return record.iloc[0].to_dict()
 
 @router.post("/{household_id}/members")
 def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", user=Depends(get_current_user)):
-    require_household_admin(user, str(household_id))
     now = datetime.now(timezone.utc)
+    require_household_role(user, str(household_id), required_role="admin")
     mapping = UserHousehold(user_id=target_user_id, household_id=household_id, role=role)
     save_version(mapping, "user_households", "mapping_id")
     log_action(user["user_id"], "add_member", "households", str(household_id), {"user_id": str(target_user_id), "role": role})
@@ -122,7 +119,7 @@ def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", u
 
 @router.delete("/{household_id}/members/{target_user_id}")
 def remove_member(household_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
-    require_household_admin(user, str(household_id))
+    require_household_role(user, str(household_id), required_role="admin")
     df = load_versions("user_households", UserHousehold)
     cur = df[(df["user_id"] == str(target_user_id)) &
              (df["household_id"] == str(household_id)) &

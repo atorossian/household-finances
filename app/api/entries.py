@@ -6,6 +6,7 @@ import boto3
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
+from app.services.roles import require_household_role
 
 router = APIRouter()
 
@@ -13,6 +14,7 @@ router = APIRouter()
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
+    require_household_role(user, household_id, "member")
 
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create entries for another user")
@@ -69,8 +71,15 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
 
+    require_household_role(user, household_id, "member")
+
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot update entries for another user")
+
+    df = load_versions("entries", Entry)
+    current = df[(df["entry_id"] == str(entry_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    if current.empty:
+        raise HTTPException(status_code=404, detail="Entry not found")
 
     # Stale old version
     mark_old_version_as_stale("entries", entry_id, "entry_id")
@@ -99,23 +108,42 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
 
 @router.delete("/{entry_id}")
 def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
+    df = load_versions("entries", Entry)
+    current = df[(df["entry_id"] == str(entry_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    if current.empty:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    row = current.iloc[0].to_dict()
+    require_household_role(user, row['household_id'], "member")
 
     return soft_delete_record(
         "entries", str(entry_id), "entry_id", Entry,
-        user=user, owner_field="user_id", require_owner=True
+        user=user, require_owner=False
     )
-
 
 @router.get("/")
 def list_current_entries(user=Depends(get_current_user)):
     df = load_versions("entries", Entry)
-    current = df[
-        (df["is_current"]) &
-        (~df.get("is_deleted", False).fillna(False)) &
-        (df["user_id"] == str(user["user_id"]))
-    ]
-    log_action(user["user_id"], "list", "entries", None, {"count": len(current)})
-    return current.sort_values(by="updated_at", ascending=False).to_dict(orient="records")
+    if df.empty:
+        return []
+
+    # Filter current and active
+    df = df[(df["is_current"]) & (~df.get("is_deleted", False).fillna(False))]
+
+    # Keep only entries for households where the user is at least member
+    households = set(df["household_id"].unique())
+    allowed_households = []
+    for hh_id in households:
+        try:
+            require_household_role(user, str(hh_id), required_role="member")
+            allowed_households.append(hh_id)
+        except HTTPException:
+            continue
+
+    df = df[df["household_id"].isin(allowed_households)]
+    log_action(user["user_id"], "list", "entries", None, {"count": len(df)})
+
+    return df.to_dict(orient="records")
 
 
 @router.get("/{entry_id}")
@@ -124,6 +152,7 @@ def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
     versions = df[df["entry_id"] == str(entry_id)].sort_values(by="updated_at", ascending=False)
     if versions.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
-    
+    entry = versions.iloc[0].to_dict()
+    require_household_role(user, entry['household_id'], "member")
     log_action(user["user_id"], "get", "entries", str(entry_id))
     return versions.to_dict(orient="records")

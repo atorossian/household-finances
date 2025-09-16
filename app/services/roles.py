@@ -1,6 +1,7 @@
 from app.services.storage import load_versions
 from app.models.schemas import UserHousehold
 import pandas as pd
+from fastapi import HTTPException
 
 ROLE_WEIGHT = {"reader": 1, "member": 2, "admin": 3}
 
@@ -19,10 +20,18 @@ def get_membership(user_id: str, household_id: str) -> dict | None:
     row = df.sort_values("weight", ascending=False).iloc[0].to_dict()
     return row
 
-def require_household_admin(user: dict, household_id: str, is_superuser: bool = False):
-    if is_superuser or user.get("is_superuser"):
+def require_household_role(user: dict, household_id: str, min_role: str):
+    """
+    Check if user has at least the required role in the household.
+    Superusers always pass.
+    """
+    if user.get("is_superuser"):
         return
+    
     mem = get_membership(str(user["user_id"]), str(household_id))
-    if not mem or mem["role"] != "admin":
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Admin role required for this household")
+    if not mem:
+        raise HTTPException(status_code=403, detail=f"{min_role} role required for this household")
+
+    if ROLE_WEIGHT[mem["role"]] < ROLE_WEIGHT[min_role]:
+        raise HTTPException(status_code=403, detail=f"{min_role} role required for this household")
+

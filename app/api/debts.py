@@ -12,6 +12,7 @@ from app.services.storage import (
     save_version, resolve_id_by_name, load_versions, soft_delete_record, log_action, mark_old_version_as_stale
 )
 from app.services.auth import get_current_user
+from app.services.roles import require_household_role
 from scripts.safe_due_dates import safe_due_date
 
 router = APIRouter()
@@ -20,7 +21,7 @@ router = APIRouter()
 def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
-
+    require_household_role(user, household_id, "member")
     # User check
     if str(payload.user_id) != str(user["user_id"]):
         raise HTTPException(status_code=403, detail="Cannot create debts for another user")
@@ -120,6 +121,8 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Debt not found")
 
     row = match.iloc[0].to_dict()
+    require_household_role(user, row["household_id"], "admin")
+
     mark_old_version_as_stale("debts", str(debt_id), "debt_id")
 
     updated = Debt(
@@ -137,6 +140,13 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
 @router.delete("/{debt_id}")
 def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     # Cascade to child entries handled inside storage
+    df = load_versions("debts", Debt)
+    current = df[(df["debt_id"] == str(debt_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    if current.empty:
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    row = current.iloc[0].to_dict()
+    require_household_role(user, str(row["household_id"]), required_role="member")
     return soft_delete_record(
         "debts", str(debt_id), "debt_id", Debt,
         user=user, owner_field="user_id", require_owner=True
@@ -145,11 +155,34 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
 @router.get("/")
 def list_debts(user=Depends(get_current_user)):
     df = load_versions("debts", Debt)
-    df = df[
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False)) &
-        (df["user_id"] == str(user["user_id"]))
-    ]
+    if df.empty:
+        return []
+
+    df = df[(df["is_current"]) & (~df.get("is_deleted", False).fillna(False))]
+
+    # Keep only debts from households the user belongs to
+    households = set(df["household_id"].unique())
+    allowed = []
+    for hh_id in households:
+        try:
+            require_household_role(user, str(hh_id), required_role="member")
+            allowed.append(hh_id)
+        except HTTPException:
+            continue
+
+    df = df[df["household_id"].isin(allowed)]
     log_action(user["user_id"], "list", "debts", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
+@router.get("/{debt_id}")
+def get_debt(debt_id: UUID, user=Depends(get_current_user)):
+    df = load_versions("debts", Debt)
+    records = df[(df["debt_id"] == str(debt_id)) & (df["is_current"])]
+    if records.empty:
+        raise HTTPException(status_code=404, detail="Debt not found")
+
+    debt = records.iloc[0].to_dict()
+    require_household_role(user, str(debt["household_id"]), required_role="member")
+
+    log_action(user["user_id"], "get", "debts", str(debt_id))
+    return records.to_dict(orient="records")

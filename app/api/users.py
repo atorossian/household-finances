@@ -97,6 +97,10 @@ def login_user(request: LoginRequest):
 
 @router.put("/{user_id}")
 def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_current_user)):
+
+    if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
+        raise HTTPException(status_code=403, detail="You can only update your own profile")
+    
     users_df = load_versions("users", User)
     mark_old_version_as_stale("users", user_id, "user_id")
 
@@ -126,6 +130,8 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
 @router.delete("/{user_id}")
 def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     # Only allow deleting your own account (or admins if you add auth)
+    if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
+        raise HTTPException(status_code=403, detail="You can only update your own profile")
     return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
 
 @router.post("/refresh")

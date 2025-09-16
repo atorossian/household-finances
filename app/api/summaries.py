@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
+from app.services.roles import require_household_role
 from app.models.schemas import Entry, Account, Household, UserHousehold
 
 router = APIRouter()
@@ -13,35 +14,28 @@ def get_entry_summary(
     end: str | None = Query(None, description="End month YYYY-MM"),
     last_n_months: int | None = Query(None, description="Last N months to include"),
     type: str | None = Query(None, description="Optional filter: income or expense"),
+    household_id: str | None = Query(None, description="Restrict to a specific household"),
     user=Depends(get_current_user),
 ):
     df = load_versions("entries", Entry)
 
     # --- Base filter ---
-    if user.get("is_superuser", False):
-        # superuser sees all entries
-        df = df[(df["is_current"]) & (~df["is_deleted"].fillna(False))]
-    else:
-        # check household memberships
-        households = load_versions("user_households", UserHousehold)
-        user_households = households[
-            (households["user_id"] == str(user["user_id"])) &
-            (households["is_current"]) &
-            (~households["is_deleted"].fillna(False))
-        ]
-        allowed_household_ids = user_households["household_id"].unique().tolist()
-        df = df[
-            (df["is_current"]) &
-            (~df["is_deleted"].fillna(False)) &
-            (df["household_id"].isin(allowed_household_ids))
-        ]
-
+    df = df[
+        (df["is_current"])
+        & (~df["is_deleted"].fillna(False))
+        & (df["user_id"] == str(user["user_id"]))
+    ]
     if df.empty:
         return {"message": "No entries available"}
 
     df["entry_date"] = pd.to_datetime(df["entry_date"])
     df["month"] = df["entry_date"].dt.to_period("M")
 
+    # --- Household filter ---
+    if household_id:
+        require_household_role(user, str(household_id), required_role="member")
+        df = df[df["household_id"] == household_id]
+    
     # --- Date filtering ---
     if last_n_months:
         today = pd.to_datetime("today").normalize()
