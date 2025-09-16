@@ -1,6 +1,6 @@
 
 from enum import Enum
-
+from typing import Literal
 
 class EntryType(str, Enum):
     income = "income"
@@ -28,3 +28,5 @@ class Category(str, Enum):
     academic = "academic"
     presents = "presents"
     other = "other"
+
+Role = Literal["reader", "member", "admin"]

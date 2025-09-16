@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
-from app.models.schemas import Entry, Account, Household
+from app.services.roles import require_household_role
+from app.models.schemas import Entry, Account, Household, UserHousehold
 
 router = APIRouter()
 
@@ -13,15 +14,16 @@ def get_entry_summary(
     end: str | None = Query(None, description="End month YYYY-MM"),
     last_n_months: int | None = Query(None, description="Last N months to include"),
     type: str | None = Query(None, description="Optional filter: income or expense"),
+    household_id: str | None = Query(None, description="Restrict to a specific household"),
     user=Depends(get_current_user),
 ):
     df = load_versions("entries", Entry)
 
     # --- Base filter ---
     df = df[
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False)) &
-        (df["user_id"] == str(user["user_id"]))
+        (df["is_current"])
+        & (~df["is_deleted"].fillna(False))
+        & (df["user_id"] == str(user["user_id"]))
     ]
     if df.empty:
         return {"message": "No entries available"}
@@ -29,6 +31,11 @@ def get_entry_summary(
     df["entry_date"] = pd.to_datetime(df["entry_date"])
     df["month"] = df["entry_date"].dt.to_period("M")
 
+    # --- Household filter ---
+    if household_id:
+        require_household_role(user, str(household_id), required_role="member")
+        df = df[df["household_id"] == household_id]
+    
     # --- Date filtering ---
     if last_n_months:
         today = pd.to_datetime("today").normalize()
@@ -57,18 +64,27 @@ def get_entry_summary(
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-    # --- Trends ---
+   # --- Trends ---
     type_trends, category_trends = None, None
     if last_n_months or (start and end):
-        # Type-level trends (income vs expense vs net)
-        type_trends = df.groupby(["month", "type"])["amount"].sum().unstack(fill_value=0)
-        type_trends["net"] = type_trends.get("income", 0) - type_trends.get("expense", 0)
-        type_trends = type_trends.reset_index().to_dict(orient="records")
+        # Normalize month to string early
+        df["month"] = df["month"].astype(str)
+
+        # Type-level trends
+        type_trends = (
+            df.groupby(["month", "type"])["amount"]
+            .sum()
+            .reset_index()
+            .to_dict(orient="records")
+        )
 
         # Category-level trends
-        category_trends = df.groupby(["month", "category"])["amount"].sum().unstack(fill_value=0)
-        category_trends = category_trends.reset_index().to_dict(orient="records")
-
+        category_trends = (
+            df.groupby(["month", "category"])["amount"]
+            .sum()
+            .reset_index()
+            .to_dict(orient="records")
+        )
     return {
         "total": round(total, 2),
         "by_category": {k: round(v, 2) for k, v in by_category.items()},
