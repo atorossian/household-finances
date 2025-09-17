@@ -1,19 +1,23 @@
-# debts.py
 from calendar import monthrange
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from uuid import uuid4, UUID
 import pandas as pd
-from app.models.schemas import (
-    Debt, DebtCreate, Entry,
-    Account, Household, UserAccount, UserHousehold
-)
+from app.models.schemas.debt import Debt, DebtCreate, DebtOut
+from app.models.schemas.entry import Entry
+from app.models.schemas.account import Account
+from app.models.schemas.household import Household
+from app.models.schemas.membership import UserAccount, UserHousehold
 from app.services.storage import (
-    save_version, resolve_id_by_name, load_versions, soft_delete_record, log_action, mark_old_version_as_stale, generate_debt_entries
+    save_version, resolve_id_by_name, 
+    load_versions, soft_delete_record, 
+    log_action, mark_old_version_as_stale, 
+    generate_debt_entries
 )
 from app.services.auth import get_current_user
 from app.services.roles import validate_entry_permissions
 from scripts.safe_due_dates import safe_due_date
+from app.services.utils import page_params
 
 router = APIRouter()
 
@@ -47,43 +51,12 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     save_version(debt, "debts", "debt_id")
     log_action(user["user_id"], "create", "debts", str(debt.debt_id), payload.model_dump())
 
-
     # --- Generate installments ---
-    if payload.interest_rate and payload.interest_rate > 0.0:
-        # Convert annual % to monthly decimal
-        r = payload.interest_rate / 100 / 12
-        n = payload.installments
-        P = payload.principal
-        installment_value = round(P * (r * (1 + r) ** n) / ((1 + r) ** n - 1), 2)
-    else:
-        installment_value = round(payload.principal / payload.installments, 2)
+    entries = generate_debt_entries(debt)
+    for e in entries:
+        save_version(e, "entries", "entry_id")
+        log_action(user['user_id'], "create", "entries", str(e.entry_id), e.model_dump())
 
-    entries = []
-
-    for i in range(payload.installments):
-        due_date = safe_due_date(payload.start_date, i, payload.due_day)
-
-        entry = Entry(
-            entry_id=uuid4(),
-            user_id=payload.user_id,
-            account_id=account_id,
-            household_id=household_id,
-            debt_id=debt_id,
-            entry_date=due_date.date(),
-            value_date=due_date.date(),
-            type="expense",
-            category="financing",
-            amount=installment_value,
-            description=f"{payload.name} installment {i+1}/{payload.installments}",
-            created_at=now,
-            updated_at=now,
-            is_current=True,
-            is_deleted=False,
-        )
-        save_version(entry, "entries", "entry_id")
-        
-        entries.append(entry)
-        log_action(user["user_id"], "create", "entries", str(entry.entry_id), entry.model_dump())
     return {
         "message": "Debt created",
         "debt_id": str(debt.debt_id),
@@ -110,12 +83,14 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
         is_deleted=False,
     )
     save_version(updated, "debts", "debt_id")
+    log_action(user["user_id"], "update", "debts", str(debt_id), payload)
 
     # Load existing debt entries
     entries = load_versions("entries", Entry)
     debt_entries = entries[(entries["description"].str.contains(row["name"])) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))]
 
     today = datetime.now(timezone.utc).date()
+
     for _, e in debt_entries.iterrows():
         entry_date = pd.to_datetime(e["entry_date"]).date()
 
@@ -131,11 +106,18 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
             # Future entries: recalc with new debt terms
             mark_old_version_as_stale("entries", e["entry_id"], "entry_id")
 
-    # Regenerate future installments
-    regenerate_future_debt_entries(updated, from_date=today)
+    # --- Generate installments ---
+    entries = generate_debt_entries(updated, start_date=today)
+    for e in entries:
+        save_version(e, "entries", "entry_id")
+        log_action(user['user_id'], "update", "entries", str(e.entry_id), e.model_dump())
 
-    log_action(user["user_id"], "update", "debts", str(debt_id), payload)
-    return {"message": "Debt updated", "debt_id": str(debt_id)}
+    return {
+        "message": "Debt update",
+        "debt_id": str(updated.debt_id),
+        "installments": payload.installments,
+        "entries": [str(e.entry_id) for e in entries]
+    }
 
 
 @router.delete("/{debt_id}")
@@ -153,30 +135,39 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
         user=user, owner_field="user_id", require_owner=True
     )
 
-@router.get("/")
-def list_debts(user=Depends(get_current_user)):
+@router.get("/", response_model=list[DebtOut])
+def list_debts(user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("debts", Debt)
     if df.empty:
         return []
 
     df = df[(df["is_current"]) & (~df.get("is_deleted", False).fillna(False))]
 
-    # Keep only debts from households the user belongs to
-    households = set(df["household_id"].unique())
+    # Validate each debt against entry permissions
     allowed = []
-    for hh_id in households:
+    for _, row in df.iterrows():
         try:
-            require_household_role(user, str(hh_id), required_role="member")
-            allowed.append(hh_id)
+            validate_entry_permissions(
+                user_id=row["user_id"],
+                account_id=row["account_id"],
+                household_id=row["household_id"],
+                acting_user=user,
+            )
+            allowed.append(row)
         except HTTPException:
             continue
 
-    df = df[df["household_id"].isin(allowed)]
+    # Build new dataframe from allowed rows
+    if not allowed:
+        return []
+    df = pd.DataFrame(allowed)
+    df = df.iloc[page["offset"] : page["offset"] + page["limit"]]
+
     log_action(user["user_id"], "list", "debts", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{debt_id}")
-def get_debt(debt_id: UUID, user=Depends(get_current_user)):
+@router.get("/{debt_id}", response_model=list[DebtOut])
+def get_debt(debt_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("debts", Debt)
     records = df[(df["debt_id"] == str(debt_id)) & (df["is_current"])]
     if records.empty:
@@ -184,6 +175,7 @@ def get_debt(debt_id: UUID, user=Depends(get_current_user)):
 
     row = records.iloc[0].to_dict()
     validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
+    df = records.iloc[page["offset"] : page["offset"] + page["limit"]]
 
     log_action(user["user_id"], "get", "debts", str(debt_id))
     return records.to_dict(orient="records")

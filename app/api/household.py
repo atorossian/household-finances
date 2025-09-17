@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Household, User, UserHousehold, HouseholdCreate
+from app.models.schemas.household import Household, HouseholdCreate, HouseholdOut
+from app.models.schemas.user import User
+from app.models.schemas.membership import UserHousehold, UserHouseholdOut
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
-from app.services.roles import require_household_role, get_membership
+from app.services.roles import require_household_role
+
 
 router = APIRouter()
 
@@ -81,7 +84,7 @@ def delete_household(household_id: UUID, user=Depends(get_current_user)):
         user=user, owner_field="user_id", require_owner=True
     )
 
-@router.get("/")
+@router.get("/", response_model=list[HouseholdOut])
 def list_households(user=Depends(get_current_user)):
     households = load_versions("households", Household)
     current = households[(households["is_current"]) & (~households["is_deleted"].fillna(False))]
@@ -98,7 +101,7 @@ def list_households(user=Depends(get_current_user)):
     log_action(user["user_id"], "list", "households", None, {"count": len(current)})
     return current.to_dict(orient="records")
 
-@router.get("/memberships")
+@router.get("/memberships", response_model=list[UserHouseholdOut])
 def list_household_memberships(user=Depends(get_current_user)):
     df = load_versions("user_households", UserHousehold)
 
@@ -114,7 +117,7 @@ def list_household_memberships(user=Depends(get_current_user)):
     log_action(user["user_id"], "list", "household_memberships", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{household_id}")
+@router.get("/{household_id}", response_model=list[HouseholdOut])
 def get_household(household_id: UUID, user=Depends(get_current_user)):
     households = load_versions("households", Household)
     record = households[(households["household_id"] == str(household_id)) & (households["is_current"])]

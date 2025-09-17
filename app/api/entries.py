@@ -1,12 +1,16 @@
 from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name, soft_delete_record, log_action
 from datetime import datetime, timezone
-from app.models.schemas import EntryCreate, Entry, Account, Household, UserAccount, UserHousehold, EntryUpdate
+from app.models.schemas.entry import EntryCreate, Entry, EntryUpdate, EntryOut
+from app.models.schemas.account import Account
+from app.models.schemas.household import Household
+from app.models.schemas.membership import UserAccount, UserHousehold
 from uuid import UUID, uuid4
 import boto3
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
-from app.services.roles import require_household_role, validate_entry_permissions
+from app.services.roles import validate_entry_permissions
+from app.services.utils import page_params
 
 router = APIRouter()
 
@@ -91,8 +95,8 @@ def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
         user=user, require_owner=False
     )
 
-@router.get("/")
-def list_current_entries(user=Depends(get_current_user)):
+@router.get("/", response_model=list[EntryOut])
+def list_current_entries(user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("entries", Entry)
     if df.empty:
         return []
@@ -118,14 +122,15 @@ def list_current_entries(user=Depends(get_current_user)):
     if not allowed:
         return []
     df = pd.DataFrame(allowed)
-    
+    df = df.iloc[page["offset"] : page["offset"] + page["limit"]]
+
     log_action(user["user_id"], "list", "entries", None, {"count": len(df)})
 
     return df.to_dict(orient="records")
 
 
-@router.get("/{entry_id}")
-def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
+@router.get("/{entry_id}", response_model=list[EntryOut])
+def get_entry_history(entry_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("entries", Entry)
     versions = df[df["entry_id"] == str(entry_id)].sort_values(by="updated_at", ascending=False)
     if versions.empty:
@@ -133,6 +138,6 @@ def get_entry_history(entry_id: UUID, user=Depends(get_current_user)):
     row = versions.iloc[0].to_dict()
 
     validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
-
+    df = versions.iloc[page["offset"] : page["offset"] + page["limit"]]
     log_action(user["user_id"], "get", "entries", str(entry_id))
-    return versions.to_dict(orient="records")
+    return df.to_dict(orient="records")

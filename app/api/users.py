@@ -10,7 +10,8 @@ import pandas as pd
 from uuid import UUID, uuid4
 import jwt
 from app.services.utils import send_email, validate_password_strength, is_password_expired, normalize_email
-from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, UserAccount, UserHousehold, PasswordHistory, PasswordResetToken
+from app.models.schemas.user import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, PasswordHistory, PasswordResetToken, UserOut
+from app.models.schemas.membership import UserAccount, UserHousehold
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 from app.services.triggers import on_user_suspended, on_user_unsuspended, on_password_change
