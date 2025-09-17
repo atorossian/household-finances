@@ -12,7 +12,14 @@ from typing import Type, Optional
 from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog, Debt
+from app.models.schemas.entry import Entry
+from app.models.schemas.user import User, RefreshToken
+from app.models.schemas.household import Household
+from app.models.schemas.account import Account
+from app.models.schemas.membership import UserAccount, UserHousehold
+from app.models.schemas.audit import AuditLog
+from app.models.schemas.debt import Debt
+
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")

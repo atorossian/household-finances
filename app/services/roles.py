@@ -1,5 +1,5 @@
 from app.services.storage import load_versions
-from app.models.schemas import UserHousehold, UserAccount
+from app.models.schemas.membership import UserHousehold, UserAccount
 import pandas as pd
 from fastapi import HTTPException
 
