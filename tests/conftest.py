@@ -62,7 +62,7 @@ def superuser_client(client):
     users_df = load_versions("users", User, record_id=user_id)
     row = users_df.iloc[0].to_dict()
     row.update({"is_superuser": True})
-    save_version("users", User(**row))
+    save_version(User(**row), "users", "user_id")
 
     # Login
     login_payload = {"email": register_payload["email"], "password": register_payload["password"]}
