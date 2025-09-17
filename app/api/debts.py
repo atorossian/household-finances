@@ -9,10 +9,10 @@ from app.models.schemas import (
     Account, Household, UserAccount, UserHousehold
 )
 from app.services.storage import (
-    save_version, resolve_id_by_name, load_versions, soft_delete_record, log_action, mark_old_version_as_stale
+    save_version, resolve_id_by_name, load_versions, soft_delete_record, log_action, mark_old_version_as_stale, generate_debt_entries
 )
 from app.services.auth import get_current_user
-from app.services.roles import require_household_role
+from app.services.roles import validate_entry_permissions
 from scripts.safe_due_dates import safe_due_date
 
 router = APIRouter()
@@ -21,32 +21,10 @@ router = APIRouter()
 def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
-    require_household_role(user, household_id, "member")
-    # User check
-    if str(payload.user_id) != str(user["user_id"]):
-        raise HTTPException(status_code=403, detail="Cannot create debts for another user")
+    
+    now = datetime.now(timezone.utc)
+    validate_entry_permissions(str(user["user_id"]), account_id, household_id, user)
 
-    # --- Membership checks ---
-    account_memberships = load_versions("user_accounts", UserAccount)
-    household_memberships = load_versions("user_households", UserHousehold)
-
-    account_match = account_memberships[
-        (account_memberships["user_id"] == str(payload.user_id)) &
-        (account_memberships["account_id"] == str(account_id)) &
-        (account_memberships["is_current"]) &
-        (~account_memberships["is_deleted"].fillna(False))
-    ]
-    if account_match.empty:
-        raise HTTPException(status_code=403, detail="Account mismatch or not assigned to user")
-
-    household_match = household_memberships[
-        (household_memberships["user_id"] == str(payload.user_id)) &
-        (household_memberships["household_id"] == str(household_id)) &
-        (household_memberships["is_current"]) &
-        (~household_memberships["is_deleted"].fillna(False))
-    ]
-    if household_match.empty:
-        raise HTTPException(status_code=403, detail="Household mismatch or not assigned to user")
 
     # --- Build and save debt ---
     debt_id = uuid4()
@@ -61,8 +39,8 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
         installments=payload.installments,
         start_date=payload.start_date,
         due_day=payload.due_day,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=now,
+        updated_at=now,
         is_current=True,
         is_deleted=False,
     )
@@ -97,15 +75,15 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
             category="financing",
             amount=installment_value,
             description=f"{payload.name} installment {i+1}/{payload.installments}",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
             is_current=True,
             is_deleted=False,
         )
         save_version(entry, "entries", "entry_id")
-        log_action(user["user_id"], "create", "entries", str(entry.entry_id), entry.model_dump())
+        
         entries.append(entry)
-
+        log_action(user["user_id"], "create", "entries", str(entry.entry_id), entry.model_dump())
     return {
         "message": "Debt created",
         "debt_id": str(debt.debt_id),
@@ -117,12 +95,11 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
 def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
     debts = load_versions("debts", Debt)
     match = debts[(debts["debt_id"] == str(debt_id)) & (debts["is_current"]) & (~debts["is_deleted"].fillna(False))]
+
     if match.empty:
         raise HTTPException(status_code=404, detail="Debt not found")
 
     row = match.iloc[0].to_dict()
-    require_household_role(user, row["household_id"], "admin")
-
     mark_old_version_as_stale("debts", str(debt_id), "debt_id")
 
     updated = Debt(
@@ -130,12 +107,36 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
         debt_id=debt_id,
         updated_at=datetime.now(timezone.utc),
         is_current=True,
-        is_deleted=False
+        is_deleted=False,
     )
     save_version(updated, "debts", "debt_id")
 
+    # Load existing debt entries
+    entries = load_versions("entries", Entry)
+    debt_entries = entries[(entries["description"].str.contains(row["name"])) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))]
+
+    today = datetime.now(timezone.utc).date()
+    for _, e in debt_entries.iterrows():
+        entry_date = pd.to_datetime(e["entry_date"]).date()
+
+        if entry_date < today:
+            # Past entries: only update description if debt name changed
+            if "name" in payload and payload["name"] != row["name"]:
+                mark_old_version_as_stale("entries", e["entry_id"], "entry_id")
+                e_dict = e.to_dict()
+                e_dict["description"] = e_dict["description"].replace(row["name"], payload["name"])
+                e_dict.update({"is_current": True, "is_deleted": False, "updated_at": datetime.now(timezone.utc)})
+                save_version(Entry(**e_dict), "entries", "entry_id")
+        else:
+            # Future entries: recalc with new debt terms
+            mark_old_version_as_stale("entries", e["entry_id"], "entry_id")
+
+    # Regenerate future installments
+    regenerate_future_debt_entries(updated, from_date=today)
+
     log_action(user["user_id"], "update", "debts", str(debt_id), payload)
     return {"message": "Debt updated", "debt_id": str(debt_id)}
+
 
 @router.delete("/{debt_id}")
 def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
@@ -146,7 +147,7 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Debt not found")
 
     row = current.iloc[0].to_dict()
-    require_household_role(user, str(row["household_id"]), required_role="member")
+    validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
     return soft_delete_record(
         "debts", str(debt_id), "debt_id", Debt,
         user=user, owner_field="user_id", require_owner=True
@@ -181,8 +182,8 @@ def get_debt(debt_id: UUID, user=Depends(get_current_user)):
     if records.empty:
         raise HTTPException(status_code=404, detail="Debt not found")
 
-    debt = records.iloc[0].to_dict()
-    require_household_role(user, str(debt["household_id"]), required_role="member")
+    row = records.iloc[0].to_dict()
+    validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
 
     log_action(user["user_id"], "get", "debts", str(debt_id))
     return records.to_dict(orient="records")

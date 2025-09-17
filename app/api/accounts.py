@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from app.models.schemas import Account, Household, User, UserAccount
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user
-from app.services.roles import require_household_role, get_membership
+from app.services.roles import require_household_role, get_membership, require_account_access
 
 router = APIRouter()
 
@@ -141,7 +141,7 @@ def get_account(account_id: UUID, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Account not found")
 
     acc = record.iloc[0].to_dict()
-    require_household_role(user, acc["household_id"], required_role="member")
+    require_account_access(user, acc, min_role="member")
     
     log_action(user["user_id"], "get", "accounts", str(account_id))
     return acc

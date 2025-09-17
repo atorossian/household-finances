@@ -10,8 +10,9 @@ import pyarrow.dataset as ds
 import pandas as pd
 from typing import Type, Optional
 from fastapi import HTTPException
+from dateutil.relativedelta import relativedelta
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog
+from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog, Debt
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
@@ -331,3 +332,55 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
     )
     
     save_version(entry, "audit_logs", "log_id")
+
+
+def generate_debt_entries(
+    debt: Debt,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> list[Entry]:
+    """
+    Generate installment entries for a debt within an optional date range.
+    If start_date / end_date are None, the full schedule is generated.
+    """
+
+    entries = []
+    base_start = pd.to_datetime(debt.start_date).date()
+
+    if debt.interest_rate and debt.interest_rate > 0.0:
+        # Convert annual % to monthly decimal
+        r = debt.interest_rate / 100 / 12
+        n = debt.installments
+        P = debt.principal
+        installment_value = round(P * (r * (1 + r) ** n) / ((1 + r) ** n - 1), 2)
+    else:
+        installment_value = round(debt.principal / debt.installments, 2)
+
+    for i in range(debt.installments):
+        due_date = base_start + relativedelta(months=i)
+
+        # --- Date filtering ---
+        if start_date and due_date < start_date:
+            continue
+        if end_date and due_date > end_date:
+            break
+
+        entry = Entry(
+            entry_id=uuid4(),
+            user_id=debt.user_id,
+            account_id=debt.account_id,
+            household_id=debt.household_id,
+            entry_date=due_date,
+            value_date=due_date,
+            type="expense",
+            category="financing",
+            amount=installment_value,
+            description=f"Installment {i+1}/{debt.installments} - {debt.name}",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_current=True,
+            is_deleted=False,
+        )
+        entries.append(entry)
+
+    return entries
