@@ -45,7 +45,7 @@ def clean_bucket(setup_s3):
 def client():
     return TestClient(app.app)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def superuser_client(client):
     # Bootstrap superuser
     register_payload = {
