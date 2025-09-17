@@ -1,5 +1,5 @@
 from app.services.storage import load_versions
-from app.models.schemas import UserHousehold
+from app.models.schemas import UserHousehold, UserAccount
 import pandas as pd
 from fastapi import HTTPException
 
@@ -35,3 +35,52 @@ def require_household_role(user: dict, household_id: str, required_role: str):
     if ROLE_WEIGHT[mem["role"]] < ROLE_WEIGHT[required_role]:
         raise HTTPException(status_code=403, detail=f"{required_role} role required for this household")
 
+def require_account_access(user: dict, account: dict, min_role: str = "member"):
+    # first check household-level access
+    require_household_role(user, account["household_id"], required_role=min_role)
+
+    # then tighten: if not admin/superuser, must be assigned to the account
+    mem = get_membership(str(user["user_id"]), account["household_id"])
+    if not user.get("is_superuser") and mem and mem["role"] != "admin":
+        ua = load_versions("user_accounts", UserAccount)
+        ua = ua[(ua["is_current"]) & (~ua.get("is_deleted", False).fillna(False))]
+        assigned = not ua[
+            (ua["user_id"] == str(user["user_id"])) &
+            (ua["account_id"] == str(account["account_id"]))
+        ].empty
+        if not assigned:
+            raise HTTPException(status_code=403, detail="Not assigned to this account")
+
+
+def validate_entry_permissions(user_id: str, account_id: str, household_id: str, acting_user: dict):
+    """
+    Validate that:
+    1. Acting user is the same as entry.user_id
+    2. User is member of the household
+    3. User is assigned to the account
+    """
+
+    if str(user_id) != str(acting_user["user_id"]):
+        raise HTTPException(status_code=403, detail="Cannot operate on another user's entries")
+
+    # Check household membership
+    hh = load_versions("user_households", UserHousehold)
+    hh_match = hh[
+        (hh["user_id"] == str(user_id)) &
+        (hh["household_id"] == str(household_id)) &
+        (hh["is_current"]) &
+        (~hh.get("is_deleted", False).fillna(False))
+    ]
+    if hh_match.empty:
+        raise HTTPException(status_code=403, detail="User not part of household")
+
+    # Check account membership
+    acc = load_versions("user_accounts", UserAccount)
+    acc_match = acc[
+        (acc["user_id"] == str(user_id)) &
+        (acc["account_id"] == str(account_id)) &
+        (acc["is_current"]) &
+        (~acc.get("is_deleted", False).fillna(False))
+    ]
+    if acc_match.empty:
+        raise HTTPException(status_code=403, detail="User not assigned to account")
