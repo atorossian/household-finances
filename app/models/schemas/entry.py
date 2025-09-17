@@ -48,11 +48,15 @@ class EntryOut(BaseModel):
     user_id: str
     account_id: str
     household_id: str
+    debt_id: str | None = None
+    type: EntryType
     category: str
     amount: Decimal
-    currency: str
-    date: datetime
+    description: str | None = None
+    entry_date: date
+    value_date: date
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         orm_mode = True
