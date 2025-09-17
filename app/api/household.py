@@ -119,8 +119,8 @@ def list_household_memberships(user=Depends(get_current_user)):
 
 @router.get("/{household_id}", response_model=list[HouseholdOut])
 def get_household(household_id: UUID, user=Depends(get_current_user)):
-    households = load_versions("households", Household)
-    record = households[(households["household_id"] == str(household_id)) & (households["is_current"])]
+    households = load_versions("households", Household, record_id=household_id)
+    record = households[(households["is_current"])]
     if record.empty:
         raise HTTPException(status_code=404, detail="Household not found")
     require_household_role(user, str(household_id), required_role="member")

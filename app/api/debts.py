@@ -66,8 +66,8 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
 
 @router.put("/{debt_id}")
 def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
-    debts = load_versions("debts", Debt)
-    match = debts[(debts["debt_id"] == str(debt_id)) & (debts["is_current"]) & (~debts["is_deleted"].fillna(False))]
+    debts = load_versions("debts", Debt, record_id=debt_id)
+    match = debts[(debts["is_current"]) & (~debts["is_deleted"].fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="Debt not found")
@@ -123,8 +123,8 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
 @router.delete("/{debt_id}")
 def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     # Cascade to child entries handled inside storage
-    df = load_versions("debts", Debt)
-    current = df[(df["debt_id"] == str(debt_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    df = load_versions("debts", Debt, record_id=debt_id)
+    current = df[(df["is_current"]) & (~df["is_deleted"].fillna(False))]
     if current.empty:
         raise HTTPException(status_code=404, detail="Debt not found")
 
@@ -169,8 +169,8 @@ def list_debts(user=Depends(get_current_user), page=Depends(page_params)):
 
 @router.get("/{debt_id}", response_model=list[DebtOut])
 def get_debt(debt_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    df = load_versions("debts", Debt)
-    records = df[(df["debt_id"] == str(debt_id)) & (df["is_current"])]
+    df = load_versions("debts", Debt, record_id=debt_id)
+    records = df[df["is_current"]]
     if records.empty:
         raise HTTPException(status_code=404, detail="Debt not found")
 

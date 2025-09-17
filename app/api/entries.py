@@ -48,8 +48,8 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
 
-    df = load_versions("entries", Entry)
-    current = df[(df["entry_id"] == str(entry_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    df = load_versions("entries", Entry, record_id=entry_id)
+    current = df[(df["is_current"]) & (~df["is_deleted"].fillna(False))]
     if current.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
 
@@ -82,8 +82,8 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
 
 @router.delete("/{entry_id}")
 def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
-    df = load_versions("entries", Entry)
-    current = df[(df["entry_id"] == str(entry_id)) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
+    df = load_versions("entries", Entry, record_id=entry_id)
+    current = df[(df["is_current"]) & (~df["is_deleted"].fillna(False))]
     if current.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
 
@@ -131,8 +131,8 @@ def list_current_entries(user=Depends(get_current_user), page=Depends(page_param
 
 @router.get("/{entry_id}", response_model=list[EntryOut])
 def get_entry_history(entry_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    df = load_versions("entries", Entry)
-    versions = df[df["entry_id"] == str(entry_id)].sort_values(by="updated_at", ascending=False)
+    df = load_versions("entries", Entry, record_id=entry_id)
+    versions = df.sort_values(by="updated_at", ascending=False)
     if versions.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
     row = versions.iloc[0].to_dict()

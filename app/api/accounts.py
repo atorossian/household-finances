@@ -33,8 +33,8 @@ def create_account(payload: Account, user=Depends(get_current_user)):
 
 @router.post("/{account_id}/assign-user")
 def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -64,8 +64,8 @@ def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -92,8 +92,8 @@ def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
 @router.delete("/{account_id}")
 def delete_account(account_id: UUID, user=Depends(get_current_user)):
     # Only admin of the household (or superuser)
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -140,8 +140,8 @@ def list_account_memberships(user=Depends(get_current_user), page=Depends(page_p
 
 @router.get("/{account_id}", response_model=list[AccountOut])
 def get_account(account_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    accounts = load_versions("accounts", Account)
-    record = accounts[(accounts["account_id"] == str(account_id)) & (accounts["is_current"])]
+    accounts = load_versions("accounts", Account, record_id=account_id)
+    record = accounts[accounts["is_current"]]
     if record.empty:
         raise HTTPException(status_code=404, detail="Account not found")
 

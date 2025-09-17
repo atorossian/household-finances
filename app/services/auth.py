@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from app.services.storage import save_version, load_versions
+from app.models.schemas.user import User, RefreshToken
 from fastapi.security import OAuth2PasswordBearer
 from app.config import config
 
@@ -45,8 +46,25 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        return {"user_id": user_id}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    users_df = users_df = load_versions("users", User, record_id=user_id)
+    match = users_df[
+        (users_df["is_current"]) &
+        (~users_df.get("is_deleted", False).fillna(False))
+    ]
+
+    if match.empty:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    user = match.iloc[0].to_dict()
+
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="User is inactive")
+    if user.get("is_suspended", False):
+        raise HTTPException(status_code=403, detail="User is suspended")
+
+    return user

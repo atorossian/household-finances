@@ -24,9 +24,8 @@ router = APIRouter()
 
 @router.post("/register")
 def register_user(request: RegisterRequest):
-    users_df = load_versions("users", User)
-
     normalized_email = normalize_email(request.email)
+    users_df = load_versions("users", User)
 
     if normalized_email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -102,15 +101,17 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
     
-    users_df = load_versions("users", User)
-    mark_old_version_as_stale("users", user_id, "user_id")
+    users_df = load_versions("users", User, record_id=user_id)
 
     normalized_email = normalize_email(update.email) if update.email else None
     if normalized_email and normalized_email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
+    old = users_df.iloc[-1].to_dict()
     salt = bcrypt.gensalt()
+
+    mark_old_version_as_stale("users", user_id, "user_id")
+
     updated_user = User(
         user_id=user_id,
         user_name=update.user_name or old["user_name"],
@@ -133,6 +134,7 @@ def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     # Only allow deleting your own account (or admins if you add auth)
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
+    
     return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
 
 @router.post("/refresh")
@@ -146,8 +148,8 @@ def refresh_tokens(refresh_token: str):
             raise HTTPException(status_code=401, detail="Invalid token")
 
         # Verify token in S3
-        df = load_versions("refresh_tokens", schema=RefreshToken)
-        token_row = df[(df["refresh_token_id"] == token_id) & (df["is_current"])]
+        df = load_versions("refresh_tokens", schema=RefreshToken, record_id=token_id)
+        token_row = df[(df["is_current"])]
 
         if token_row.empty:
             raise HTTPException(status_code=401, detail="Token expired or already used")
