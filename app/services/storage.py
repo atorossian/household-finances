@@ -290,30 +290,19 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     """
 
     entries_df = load_versions("entries", Entry)
-    debt_name = debt_row.get("name", "")
-    user_id = debt_row.get("user_id")
-    # If entries include debt_id column, prefer that
-    if "debt_id" in entries_df.columns:
-        sel = entries_df[
-            (entries_df["debt_id"] == str(debt_id)) &
-            (entries_df["is_current"]) &
-            (~entries_df.get("is_deleted", False).fillna(False))
-        ]
-    else:
-        # fallback: match by description (best-effort)
-        sel = entries_df[
-            (entries_df["description"].str.contains(str(debt_name), na=False)) &
-            (entries_df["user_id"] == str(user_id)) &
-            (entries_df["is_current"]) &
-            (~entries_df.get("is_deleted", False).fillna(False))
-        ]
+
+    sel = entries_df[
+        (entries_df["debt_id"] == str(debt_id)) &
+        (entries_df["is_current"]) &
+        (~entries_df.get("is_deleted", False).fillna(False))
+    ]
 
     for _, row in sel.iterrows():
         mark_old_version_as_stale("entries", row["entry_id"], "entry_id")
         data = row.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(Entry(**data), "entries", "entry_id")
-        log_action(user_id, "cascade_delete", "entries", row["entry_id"])
+        log_action(debt_row.get("user_id"), "cascade_delete", "entries", row["entry_id"])
 
 def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
 
@@ -379,6 +368,7 @@ def generate_debt_entries(
             household_id=debt.household_id,
             entry_date=due_date,
             value_date=due_date,
+            debt_id=debt.debt_id,
             type="expense",
             category="financing",
             amount=installment_value,

@@ -87,7 +87,7 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
 
     # Load existing debt entries
     entries = load_versions("entries", Entry)
-    debt_entries = entries[(entries["description"].str.contains(row["name"])) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))]
+    debt_entries = entries[(entries["debt_id"] == str(debt_id)) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))]
 
     today = datetime.now(timezone.utc).date()
 
@@ -130,6 +130,7 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
 
     row = current.iloc[0].to_dict()
     validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
+
     return soft_delete_record(
         "debts", str(debt_id), "debt_id", Debt,
         user=user, owner_field="user_id", require_owner=True

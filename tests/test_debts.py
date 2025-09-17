@@ -78,5 +78,4 @@ def test_debt_creates_entries(client: TestClient):
 
     # Verify related entries removed
     r = client.get("/entries/", headers=headers)
-    print(r.json())
-    assert all("Car Loan" not in e["description"] for e in r.json())
+    assert all(e["debt_id"] != debt_id for e in r.json())
