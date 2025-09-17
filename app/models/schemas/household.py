@@ -21,6 +21,7 @@ class HouseholdOut(BaseModel):
     household_id: str
     name: str
     created_at: datetime
+    created_by_user_id: UUID
 
     class Config:
         orm_mode = True

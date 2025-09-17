@@ -16,7 +16,6 @@ class AccountOut(BaseModel):
     account_id: str
     household_id: str
     name: str
-    type: str  # e.g., "checking", "savings", "credit"
     created_at: datetime
 
     class Config:

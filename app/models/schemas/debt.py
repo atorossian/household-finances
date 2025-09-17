@@ -32,12 +32,16 @@ class DebtCreate(BaseModel):
     due_day: int   # day of month for payments
 
 class DebtOut(BaseModel):
-    debt_id: str
-    user_id: str
-    household_id: str
-    account_id: str
-    amount: Decimal
-    description: str | None = None
+    debt_id: UUID
+    user_id: UUID
+    account_id: UUID
+    household_id: UUID
+    name: str
+    principal: float
+    interest_rate: float
+    installments: int
+    start_date: date
+    due_day: int
     created_at: datetime
 
     class Config:
