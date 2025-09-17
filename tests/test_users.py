@@ -3,7 +3,8 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 
-def test_register_login_update_change_password(client: TestClient):
+def test_register_login_update_change_password(client: TestClient, superuser_client):
+    su_client, su_headers = superuser_client
     # --- Register user ---
     register_payload = {
         "email": f"testuser-{uuid4().hex[:6]}@example.com",
@@ -78,7 +79,7 @@ def test_register_login_update_change_password(client: TestClient):
     assert r.status_code == 200
 
     # Verify user cannot be retrieved
-    r = client.get(f"/users/{user_id}", headers=headers)
+    r = client.get(f"/users/{user_id}", headers=su_headers)
     assert r.status_code == 404
 
     # Verify deleted user has no memberships left

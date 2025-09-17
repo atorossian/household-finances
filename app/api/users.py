@@ -356,10 +356,9 @@ def reset_password(email: str, otp_code: str, new_password: str):
 
 @router.get("/{user_id}")
 def get_user(user_id: str, user=Depends(get_current_user)):
-    df = load_versions("users", User)
+    df = load_versions("users", User, record_id=user_id)
 
     match = df[
-        (df["user_id"] == str(user_id)) &
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
@@ -373,8 +372,8 @@ def get_user(user_id: str, user=Depends(get_current_user)):
 def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
     if not admin.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="Not authorized to suspend users")
-    users = load_versions("users", User)
-    match = users[(users["user_id"] == str(user_id)) & (users["is_current"]) & (~users["is_deleted"])]
+    users = load_versions("users", User, record_id=user_id)
+    match = users[(users["is_current"]) & (~users["is_deleted"])]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
@@ -400,8 +399,8 @@ def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
 
 @router.post("/{user_id}/unsuspend")
 def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
-    users = load_versions("users", User)
-    match = users[(users["user_id"] == str(user_id)) & (users["is_current"]) & (~users["is_deleted"])]
+    users = load_versions("users", User, record_id=user_id)
+    match = users[(users["is_current"]) & (~users["is_deleted"])]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
