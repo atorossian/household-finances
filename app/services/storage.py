@@ -12,7 +12,14 @@ from typing import Type, Optional
 from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
 from app.config import config
-from app.models.schemas import Entry, User, Household, Account, UserAccount, UserHousehold, RefreshToken, AuditLog, Debt
+from app.models.schemas.entry import Entry
+from app.models.schemas.user import User, RefreshToken
+from app.models.schemas.household import Household
+from app.models.schemas.account import Account
+from app.models.schemas.membership import UserAccount, UserHousehold
+from app.models.schemas.audit import AuditLog
+from app.models.schemas.debt import Debt
+
 
 s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
 BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
@@ -283,30 +290,19 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     """
 
     entries_df = load_versions("entries", Entry)
-    debt_name = debt_row.get("name", "")
-    user_id = debt_row.get("user_id")
-    # If entries include debt_id column, prefer that
-    if "debt_id" in entries_df.columns:
-        sel = entries_df[
-            (entries_df["debt_id"] == str(debt_id)) &
-            (entries_df["is_current"]) &
-            (~entries_df.get("is_deleted", False).fillna(False))
-        ]
-    else:
-        # fallback: match by description (best-effort)
-        sel = entries_df[
-            (entries_df["description"].str.contains(str(debt_name), na=False)) &
-            (entries_df["user_id"] == str(user_id)) &
-            (entries_df["is_current"]) &
-            (~entries_df.get("is_deleted", False).fillna(False))
-        ]
+
+    sel = entries_df[
+        (entries_df["debt_id"] == str(debt_id)) &
+        (entries_df["is_current"]) &
+        (~entries_df.get("is_deleted", False).fillna(False))
+    ]
 
     for _, row in sel.iterrows():
         mark_old_version_as_stale("entries", row["entry_id"], "entry_id")
         data = row.to_dict()
         data.update({"updated_at": now, "is_current": True, "is_deleted": True})
         save_version(Entry(**data), "entries", "entry_id")
-        log_action(user_id, "cascade_delete", "entries", row["entry_id"])
+        log_action(debt_row.get("user_id"), "cascade_delete", "entries", row["entry_id"])
 
 def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
 
@@ -372,6 +368,7 @@ def generate_debt_entries(
             household_id=debt.household_id,
             entry_date=due_date,
             value_date=due_date,
+            debt_id=debt.debt_id,
             type="expense",
             category="financing",
             amount=installment_value,

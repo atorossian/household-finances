@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, log_action
-from app.models.schemas import RefreshToken
+from app.models.schemas.user import RefreshToken
 
 def on_user_suspended(user_id: str, reason: str, admin_id: str):
     """

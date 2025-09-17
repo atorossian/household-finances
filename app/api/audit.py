@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 import pandas as pd
 from app.services.storage import load_versions
-from app.models.schemas import AuditLog
+from app.models.schemas.audit import AuditLog
 from app.services.auth import get_current_user
 
 router = APIRouter()

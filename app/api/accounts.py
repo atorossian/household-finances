@@ -1,10 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from app.models.schemas import Account, Household, User, UserAccount
+from app.models.schemas.account import Account, AccountOut
+from app.models.schemas.household import Household
+from app.models.schemas.user import User
+from app.models.schemas.membership import UserAccount, UserAccountOut
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user
 from app.services.roles import require_household_role, get_membership, require_account_access
+from app.services.utils import page_params
 
 router = APIRouter()
 
@@ -29,8 +33,8 @@ def create_account(payload: Account, user=Depends(get_current_user)):
 
 @router.post("/{account_id}/assign-user")
 def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -60,8 +64,8 @@ def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(
 
 @router.put("/{account_id}")
 def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -88,8 +92,8 @@ def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
 @router.delete("/{account_id}")
 def delete_account(account_id: UUID, user=Depends(get_current_user)):
     # Only admin of the household (or superuser)
-    acc_df = load_versions("accounts", Account)
-    cur = acc_df[(acc_df["account_id"] == str(account_id)) & (acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
+    acc_df = load_versions("accounts", Account, record_id=account_id)
+    cur = acc_df[(acc_df["is_current"]) & (~acc_df["is_deleted"].fillna(False))]
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
@@ -103,8 +107,8 @@ def delete_account(account_id: UUID, user=Depends(get_current_user)):
     log_action(user["user_id"], "delete", "accounts", str(account_id))
     return resp
 
-@router.get("/")
-def list_accounts(user=Depends(get_current_user)):
+@router.get("/", response_model=list[AccountOut])
+def list_accounts(user=Depends(get_current_user), page=Depends(page_params)):
     accounts = load_versions("accounts", Account)
     current = accounts[(accounts["is_current"]) & (~accounts["is_deleted"].fillna(False))]
 
@@ -118,8 +122,8 @@ def list_accounts(user=Depends(get_current_user)):
     log_action(user["user_id"], "list", "accounts", None, {"count": len(current)})
     return current.to_dict(orient="records")
 
-@router.get("/memberships")
-def list_account_memberships(user=Depends(get_current_user)):
+@router.get("/memberships", response_model=list[UserAccountOut])
+def list_account_memberships(user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("user_accounts", UserAccount)
 
     if df.empty:
@@ -130,18 +134,20 @@ def list_account_memberships(user=Depends(get_current_user)):
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
+    df = df.iloc[page["offset"] : page["offset"] + page["limit"]]
     log_action(user["user_id"], "list", "account_membership", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{account_id}")
-def get_account(account_id: UUID, user=Depends(get_current_user)):
-    accounts = load_versions("accounts", Account)
-    record = accounts[(accounts["account_id"] == str(account_id)) & (accounts["is_current"])]
+@router.get("/{account_id}", response_model=list[AccountOut])
+def get_account(account_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
+    accounts = load_versions("accounts", Account, record_id=account_id)
+    record = accounts[accounts["is_current"]]
     if record.empty:
         raise HTTPException(status_code=404, detail="Account not found")
 
     acc = record.iloc[0].to_dict()
     require_account_access(user, acc, min_role="member")
+    df = record.iloc[page["offset"] : page["offset"] + page["limit"]]
     
     log_action(user["user_id"], "get", "accounts", str(account_id))
-    return acc
+    return df.to_dict(orient="records")

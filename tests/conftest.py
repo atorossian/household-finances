@@ -6,7 +6,8 @@ import boto3
 import app.main as app
 from app.config import config
 from uuid import uuid4
-
+from app.services.storage import load_versions, save_version
+from app.models.schemas.user import User
 
 def _empty_bucket(s3, bucket_name: str):
     """Helper: delete all objects in the bucket."""
@@ -44,6 +45,31 @@ def clean_bucket(setup_s3):
 def client():
     return TestClient(app.app)
 
+@pytest.fixture(scope="function")
+def superuser_client(client):
+    # Bootstrap superuser
+    register_payload = {
+        "email": f"admin-{uuid4().hex[:6]}@example.com",
+        "user_name": "admin",
+        "password": "AdminTest123!",
+    }
+    r = client.post("/users/register", json=register_payload)
+    assert r.status_code == 200
+    user_id = r.json()["user_id"]
+
+    # Promote to superuser (direct DB/S3 hack or API if available)
+    # For simplicity, you can patch the user record directly:
+    users_df = load_versions("users", User, record_id=user_id)
+    row = users_df.iloc[0].to_dict()
+    row.update({"is_superuser": True})
+    save_version(User(**row), "users", "user_id")
+
+    # Login
+    login_payload = {"email": register_payload["email"], "password": register_payload["password"]}
+    r = client.post("/users/login", json=login_payload)
+    tokens = r.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    return client, headers
 
 @pytest.fixture
 def auth_headers(client):

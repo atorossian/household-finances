@@ -10,7 +10,8 @@ import pandas as pd
 from uuid import UUID, uuid4
 import jwt
 from app.services.utils import send_email, validate_password_strength, is_password_expired, normalize_email
-from app.models.schemas import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, UserAccount, UserHousehold, PasswordHistory, PasswordResetToken
+from app.models.schemas.user import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, PasswordHistory, PasswordResetToken, UserOut
+from app.models.schemas.membership import UserAccount, UserHousehold
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 from app.services.triggers import on_user_suspended, on_user_unsuspended, on_password_change
@@ -23,9 +24,8 @@ router = APIRouter()
 
 @router.post("/register")
 def register_user(request: RegisterRequest):
-    users_df = load_versions("users", User)
-
     normalized_email = normalize_email(request.email)
+    users_df = load_versions("users", User)
 
     if normalized_email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -101,15 +101,17 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
     
-    users_df = load_versions("users", User)
-    mark_old_version_as_stale("users", user_id, "user_id")
+    users_df = load_versions("users", User, record_id=user_id)
 
     normalized_email = normalize_email(update.email) if update.email else None
     if normalized_email and normalized_email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    old = users_df[users_df["user_id"] == str(user_id)].iloc[-1].to_dict()
+    old = users_df.iloc[-1].to_dict()
     salt = bcrypt.gensalt()
+
+    mark_old_version_as_stale("users", user_id, "user_id")
+
     updated_user = User(
         user_id=user_id,
         user_name=update.user_name or old["user_name"],
@@ -132,6 +134,7 @@ def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     # Only allow deleting your own account (or admins if you add auth)
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
+    
     return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
 
 @router.post("/refresh")
@@ -145,8 +148,8 @@ def refresh_tokens(refresh_token: str):
             raise HTTPException(status_code=401, detail="Invalid token")
 
         # Verify token in S3
-        df = load_versions("refresh_tokens", schema=RefreshToken)
-        token_row = df[(df["refresh_token_id"] == token_id) & (df["is_current"])]
+        df = load_versions("refresh_tokens", schema=RefreshToken, record_id=token_id)
+        token_row = df[(df["is_current"])]
 
         if token_row.empty:
             raise HTTPException(status_code=401, detail="Token expired or already used")
@@ -353,10 +356,9 @@ def reset_password(email: str, otp_code: str, new_password: str):
 
 @router.get("/{user_id}")
 def get_user(user_id: str, user=Depends(get_current_user)):
-    df = load_versions("users", User)
+    df = load_versions("users", User, record_id=user_id)
 
     match = df[
-        (df["user_id"] == str(user_id)) &
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
@@ -370,8 +372,8 @@ def get_user(user_id: str, user=Depends(get_current_user)):
 def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
     if not admin.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="Not authorized to suspend users")
-    users = load_versions("users", User)
-    match = users[(users["user_id"] == str(user_id)) & (users["is_current"]) & (~users["is_deleted"])]
+    users = load_versions("users", User, record_id=user_id)
+    match = users[(users["is_current"]) & (~users["is_deleted"])]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
@@ -397,8 +399,8 @@ def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
 
 @router.post("/{user_id}/unsuspend")
 def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
-    users = load_versions("users", User)
-    match = users[(users["user_id"] == str(user_id)) & (users["is_current"]) & (~users["is_deleted"])]
+    users = load_versions("users", User, record_id=user_id)
+    match = users[(users["is_current"]) & (~users["is_deleted"])]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")

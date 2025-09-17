@@ -3,7 +3,10 @@ import pandas as pd
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
 from app.services.roles import require_household_role
-from app.models.schemas import Entry, Account, Household, UserHousehold
+from app.models.schemas.entry import Entry
+from app.models.schemas.account import Account
+from app.models.schemas.household import Household
+from app.models.schemas.membership import UserHousehold
 
 router = APIRouter()
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
 import re
 from datetime import datetime,timezone
@@ -69,3 +69,9 @@ def require_role(allowed_roles: list[str], user=Depends(get_current_user), resou
         raise HTTPException(status_code=403, detail="Insufficient role permissions")
     
     return user
+
+def page_params(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    return {"limit": limit, "offset": offset}
