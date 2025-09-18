@@ -95,6 +95,15 @@ def login_user(request: LoginRequest):
         "token_type": "bearer"
     }
 
+@router.get("/me")
+def get_current_user_info(user=Depends(get_current_user)):
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "user_name": user["user_name"],
+        "is_active": user.get("is_active", True),
+    }
+
 @router.put("/{user_id}")
 def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_current_user)):
 
@@ -355,7 +364,7 @@ def reset_password(email: str, otp_code: str, new_password: str):
     return {"message": "Password reset successful"}
 
 @router.get("/{user_id}")
-def get_user(user_id: str, user=Depends(get_current_user)):
+def get_user(user_id: UUID, user=Depends(get_current_user)):
     df = load_versions("users", User, record_id=user_id)
 
     match = df[
@@ -424,11 +433,3 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
 
     return {"message": "User unsuspended", "user_id": str(user_id)}
 
-@router.get("/me")
-def get_current_user_info(user=Depends(get_current_user)):
-    return {
-        "user_id": user["user_id"],
-        "email": user["email"],
-        "user_name": user["user_name"],
-        "is_active": user.get("is_active", True),
-    }
