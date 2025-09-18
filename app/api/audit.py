@@ -7,7 +7,7 @@ from app.services.utils import page_params
 
 router = APIRouter()
 
-@router.get("/logs")
+@router.get("/logs", response_model=list[AuditLog])
 def list_audit_logs(
     user_id: str | None = Query(None),
     resource_type: str | None = Query(None),
