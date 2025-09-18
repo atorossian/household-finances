@@ -89,6 +89,11 @@ def _bootstrap_user_household_account(client):
     r = client.post("/users/login", json={"email": email, "password": password})
     tokens = r.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    
+    # sanity check
+    me = client.get("/users/me", headers=headers)
+    assert me.status_code == 200, me.text
+    user_id = me.json()["user_id"]
 
     # Household
     r = client.post("/households/", json={"name": "Import HH"}, headers=headers)
@@ -101,7 +106,6 @@ def _bootstrap_user_household_account(client):
     account_id = r.json()["account_id"]
 
     # Assign user to account
-    user_id = r.json().get("user_id") or client.get("/users/me", headers=headers).json()["user_id"]
     client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
 
     return headers, household_id, account_id
