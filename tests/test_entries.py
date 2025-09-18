@@ -94,6 +94,7 @@ def _bootstrap_user_household_account(client):
     me = client.get("/users/me", headers=headers)
     assert me.status_code == 200
     user_id = me.json()["user_id"]
+    print(me.json())
 
     # Household
     r = client.post("/households/", json={"name": "Import HH"}, headers=headers)
