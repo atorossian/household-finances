@@ -83,8 +83,8 @@ def login_user(request: LoginRequest):
     if user["is_suspended"]:
         raise HTTPException(status_code=403, detail="Account is suspended")
 
-    access_token = create_access_token({"sub": user.user_id})
-    refresh_token = create_refresh_token(user.user_id)
+    access_token = create_access_token({"sub": str(user.user_id)})
+    refresh_token = create_refresh_token(str(user.user_id))
 
     log_action(user["user_id"], "login", "users", str(user["user_id"]))
     return {
