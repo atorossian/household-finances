@@ -1,0 +1,44 @@
+name: Deploy to ECS
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: eu-west-1
+      APP: household-finances
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS creds (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/<GHA_OIDC_ROLE_WITH_ECR_ECS_PERMS>
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, push
+        run: |
+          ECR_REGISTRY="${{ steps.ecr.outputs.registry }}"
+          ECR_REPO="$ECR_REGISTRY/${{ env.APP }}"
+          GIT_SHA=$(git rev-parse --short HEAD)
+          docker build -t "${{ env.APP }}:$GIT_SHA" -f Dockerfile .
+          docker tag "${{ env.APP }}:$GIT_SHA" "$ECR_REPO:$GIT_SHA"
+          docker tag "${{ env.APP }}:$GIT_SHA" "$ECR_REPO:latest"
+          docker push "$ECR_REPO:$GIT_SHA"
+          docker push "$ECR_REPO:latest"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster <your-ecs-cluster> \
+            --service <your-ecs-service> \
+            --force-new-deployment

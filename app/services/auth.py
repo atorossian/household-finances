@@ -14,8 +14,10 @@ ALGORITHM = config.get("auth", {}).get("algorithm", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = config.get("auth", {}).get("access_token_expire_minutes", 15)
 REFRESH_TOKEN_EXPIRE_DAYS = config.get("auth", {}).get("refresh_token_expire_days", 7)
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
+    if "sub" in to_encode:
+        to_encode["sub"] = str(to_encode["sub"])
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

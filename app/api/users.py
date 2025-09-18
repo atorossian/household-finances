@@ -83,8 +83,8 @@ def login_user(request: LoginRequest):
     if user["is_suspended"]:
         raise HTTPException(status_code=403, detail="Account is suspended")
 
-    access_token = create_access_token({"sub": user.user_id})
-    refresh_token = create_refresh_token(user.user_id)
+    access_token = create_access_token({"sub": str(user.user_id)})
+    refresh_token = create_refresh_token(str(user.user_id))
 
     log_action(user["user_id"], "login", "users", str(user["user_id"]))
     return {
@@ -93,6 +93,15 @@ def login_user(request: LoginRequest):
         "access_token": access_token, 
         "refresh_token": refresh_token,
         "token_type": "bearer"
+    }
+
+@router.get("/me")
+def get_current_user_info(user=Depends(get_current_user)):
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "user_name": user["user_name"],
+        "is_active": user.get("is_active", True),
     }
 
 @router.put("/{user_id}")
@@ -355,7 +364,7 @@ def reset_password(email: str, otp_code: str, new_password: str):
     return {"message": "Password reset successful"}
 
 @router.get("/{user_id}")
-def get_user(user_id: str, user=Depends(get_current_user)):
+def get_user(user_id: UUID, user=Depends(get_current_user)):
     df = load_versions("users", User, record_id=user_id)
 
     match = df[
@@ -424,11 +433,3 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
 
     return {"message": "User unsuspended", "user_id": str(user_id)}
 
-@router.get("/me")
-def get_current_user_info(user=Depends(get_current_user)):
-    return {
-        "user_id": user["user_id"],
-        "email": user["email"],
-        "user_name": user["user_name"],
-        "is_active": user.get("is_active", True),
-    }
