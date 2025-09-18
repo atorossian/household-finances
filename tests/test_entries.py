@@ -92,7 +92,7 @@ def _bootstrap_user_household_account(client):
     
     # sanity check
     me = client.get("/users/me", headers=headers)
-    assert me.status_code == 200, me.text
+    assert me.status_code == 200
     user_id = me.json()["user_id"]
 
     # Household
