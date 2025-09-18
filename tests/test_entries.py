@@ -66,7 +66,7 @@ def test_entries_full_lifecycle(client: TestClient):
     assert r.status_code == 200
 
     # --- Entry history should include 2 versions ---
-    r = client.get(f"/entries/{entry_id}", headers=headers)
+    r = client.get(f"/entries/{entry_id}/history", headers=headers)
     history = r.json()
     assert len(history) == 2
     assert history[0]["description"] == "Groceries updated"
