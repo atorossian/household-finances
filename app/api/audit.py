@@ -3,6 +3,7 @@ import pandas as pd
 from app.services.storage import load_versions
 from app.models.schemas.audit import AuditLog
 from app.services.auth import get_current_user
+from app.services.utils import page_params
 
 router = APIRouter()
 
@@ -13,7 +14,8 @@ def list_audit_logs(
     action: str | None = Query(None),
     start: str | None = Query(None),
     end: str | None = Query(None),
-    user=Depends(get_current_user)
+    user=Depends(get_current_user),
+    page=Depends(page_params),
 ):
     start_dt, end_dt = None, None
     if start and end:
@@ -32,4 +34,12 @@ def list_audit_logs(
     if action:
         df = df[df["action"] == action]
 
+    # default sort desc by timestamp (or created_at)
+    sort_col = "created_at" if "created_at" in df.columns else "timestamp"
+    if sort_col in df.columns:
+        df = df.sort_values(by=sort_col, ascending=False)
+
+    # pagination slice
+    df = df.iloc[page["offset"]: page["offset"] + page["limit"]]
+    
     return df.to_dict(orient="records")

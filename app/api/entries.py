@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.auth import get_current_user
 from app.services.roles import validate_entry_permissions
 from app.services.utils import page_params
+from app.services.fetchers import fetch_record
 
 router = APIRouter()
 
@@ -128,16 +129,25 @@ def list_current_entries(user=Depends(get_current_user), page=Depends(page_param
 
     return df.to_dict(orient="records")
 
-
-@router.get("/{entry_id}", response_model=list[EntryOut])
-def get_entry_history(entry_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    df = load_versions("entries", Entry, record_id=entry_id)
-    versions = df.sort_values(by="updated_at", ascending=False)
-    if versions.empty:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    row = versions.iloc[0].to_dict()
-
-    validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
-    df = versions.iloc[page["offset"] : page["offset"] + page["limit"]]
+@router.get("/{entry_id}", response_model=EntryOut)
+def get_entry(entry_id: UUID, user=Depends(get_current_user)):
+    row = fetch_record(
+        "entries", Entry, str(entry_id),
+        permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
+        history=False,
+    )
     log_action(user["user_id"], "get", "entries", str(entry_id))
-    return df.to_dict(orient="records")
+    return row
+
+@router.get("/{entry_id}/history", response_model=list[EntryOut])
+def get_entry_history(entry_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
+    versions = fetch_record(
+        "entries", Entry, str(entry_id),
+        permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
+        history=True, page=page, sort_by="updated_at",
+    )
+    log_action(
+        user["user_id"], "get_history", "entries", str(entry_id),
+        {"offset": page["offset"], "limit": page["limit"]}
+    )
+    return versions

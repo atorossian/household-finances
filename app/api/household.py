@@ -7,7 +7,8 @@ from app.models.schemas.membership import UserHousehold, UserHouseholdOut
 from app.services.storage import save_version, mark_old_version_as_stale, load_versions, soft_delete_record, log_action
 from app.services.auth import get_current_user
 from app.services.roles import require_household_role
-
+from app.services.utils import page_params
+from app.services.fetchers import fetch_record
 
 router = APIRouter()
 
@@ -85,7 +86,7 @@ def delete_household(household_id: UUID, user=Depends(get_current_user)):
     )
 
 @router.get("/", response_model=list[HouseholdOut])
-def list_households(user=Depends(get_current_user)):
+def list_households(user=Depends(get_current_user), page=Depends(page_params)):
     households = load_versions("households", Household)
     current = households[(households["is_current"]) & (~households["is_deleted"].fillna(False))]
 
@@ -97,12 +98,12 @@ def list_households(user=Depends(get_current_user)):
     allowed_ids = set(memberships["household_id"])
 
     current = current[current["household_id"].isin(allowed_ids)]
-
+    current = current.iloc[page["offset"]: page["offset"] + page["limit"]]
     log_action(user["user_id"], "list", "households", None, {"count": len(current)})
     return current.to_dict(orient="records")
 
 @router.get("/memberships", response_model=list[UserHouseholdOut])
-def list_household_memberships(user=Depends(get_current_user)):
+def list_household_memberships(user=Depends(get_current_user), page=Depends(page_params)):
     df = load_versions("user_households", UserHousehold)
 
     if df.empty:
@@ -114,18 +115,29 @@ def list_household_memberships(user=Depends(get_current_user)):
         (df["is_current"]) &
         (~df.get("is_deleted", False).fillna(False))
     ]
+    df = df.iloc[page["offset"]: page["offset"] + page["limit"]]
     log_action(user["user_id"], "list", "household_memberships", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{household_id}", response_model=list[HouseholdOut])
-def get_household(household_id: UUID, user=Depends(get_current_user)):
-    households = load_versions("households", Household, record_id=household_id)
-    record = households[(households["is_current"])]
-    if record.empty:
-        raise HTTPException(status_code=404, detail="Household not found")
-    require_household_role(user, str(household_id), required_role="member")
+@router.get("/{household_id}", response_model=HouseholdOut)
+def get_account(household_id: UUID, user=Depends(get_current_user)):
+    row = fetch_record(
+        "households", Household, str(household_id),
+        permission_check=lambda r: require_household_role(user, r, min_role="member"),
+        history=False,
+    )
     log_action(user["user_id"], "get", "households", str(household_id))
-    return record.iloc[0].to_dict()
+    return row
+
+@router.get("/{household_id}/history", response_model=list[HouseholdOut])
+def get_account_history(household_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
+    versions = fetch_record(
+        "households", Household, str(household_id),
+        permission_check=lambda r: require_household_role(user, r, min_role="member"),
+        history=True, page=page, sort_by="updated_at",
+    )
+    log_action(user["user_id"], "get_history", "households", str(household_id), {"offset": page["offset"], "limit": page["limit"]})
+    return versions
 
 @router.post("/{household_id}/members")
 def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", user=Depends(get_current_user)):
@@ -134,7 +146,7 @@ def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", u
     mapping = UserHousehold(user_id=target_user_id, household_id=household_id, role=role)
     save_version(mapping, "user_households", "mapping_id")
     log_action(user["user_id"], "add_member", "households", str(household_id), {"user_id": str(target_user_id), "role": role})
-    return {"message": "Member added"}
+    return {"message": "Member added", "household_id": str(household_id), "user_id": str(target_user_id)}
 
 @router.delete("/{household_id}/members/{target_user_id}")
 def remove_member(household_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
@@ -153,4 +165,4 @@ def remove_member(household_id: UUID, target_user_id: UUID, user=Depends(get_cur
     deleted.update({"is_current": True, "is_deleted": True, "updated_at": datetime.now(timezone.utc)})
     save_version(UserHousehold(**deleted), "user_households", "mapping_id")
     log_action(user["user_id"], "remove_member", "households", str(household_id), {"user_id": str(target_user_id)})
-    return {"message": "Member removed"}
+    return {"message": "Member removed", "household_id": str(household_id), "user_id": str(target_user_id)}

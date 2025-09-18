@@ -18,6 +18,7 @@ from app.services.auth import get_current_user
 from app.services.roles import validate_entry_permissions
 from scripts.safe_due_dates import safe_due_date
 from app.services.utils import page_params
+from app.services.fetchers import fetch_record
 
 router = APIRouter()
 
@@ -167,16 +168,25 @@ def list_debts(user=Depends(get_current_user), page=Depends(page_params)):
     log_action(user["user_id"], "list", "debts", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{debt_id}", response_model=list[DebtOut])
-def get_debt(debt_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    df = load_versions("debts", Debt, record_id=debt_id)
-    records = df[df["is_current"]]
-    if records.empty:
-        raise HTTPException(status_code=404, detail="Debt not found")
-
-    row = records.iloc[0].to_dict()
-    validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
-    df = records.iloc[page["offset"] : page["offset"] + page["limit"]]
-
+@router.get("/{debt_id}", response_model=DebtOut)
+def get_debt(debt_id: UUID, user=Depends(get_current_user)):
+    row = fetch_record(
+        "debts", Debt, str(debt_id),
+        permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
+        history=False,
+    )
     log_action(user["user_id"], "get", "debts", str(debt_id))
-    return records.to_dict(orient="records")
+    return row
+
+@router.get("/{debt_id}/history", response_model=list[DebtOut])
+def get_debt_history(debt_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
+    versions = fetch_record(
+        "debts", Debt, str(debt_id),
+        permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
+        history=True, page=page, sort_by="updated_at",
+    )
+    log_action(
+        user["user_id"], "get_history", "debts", str(debt_id),
+        {"offset": page["offset"], "limit": page["limit"]}
+    )
+    return versions

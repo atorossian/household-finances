@@ -9,6 +9,7 @@ from app.services.storage import load_versions, save_version, mark_old_version_a
 from app.services.auth import get_current_user
 from app.services.roles import require_household_role, get_membership, require_account_access
 from app.services.utils import page_params
+from app.services.fetchers import fetch_record
 
 router = APIRouter()
 
@@ -118,6 +119,7 @@ def list_accounts(user=Depends(get_current_user), page=Depends(page_params)):
     allowed_ids = set(memberships["account_id"])
 
     current = current[current["account_id"].isin(allowed_ids)]
+    current = current.iloc[page["offset"]: page["offset"] + page["limit"]]
 
     log_action(user["user_id"], "list", "accounts", None, {"count": len(current)})
     return current.to_dict(orient="records")
@@ -138,16 +140,22 @@ def list_account_memberships(user=Depends(get_current_user), page=Depends(page_p
     log_action(user["user_id"], "list", "account_membership", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
-@router.get("/{account_id}", response_model=list[AccountOut])
-def get_account(account_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
-    accounts = load_versions("accounts", Account, record_id=account_id)
-    record = accounts[accounts["is_current"]]
-    if record.empty:
-        raise HTTPException(status_code=404, detail="Account not found")
-
-    acc = record.iloc[0].to_dict()
-    require_account_access(user, acc, min_role="member")
-    df = record.iloc[page["offset"] : page["offset"] + page["limit"]]
-    
+@router.get("/{account_id}", response_model=AccountOut)
+def get_account(account_id: UUID, user=Depends(get_current_user)):
+    row = fetch_record(
+        "accounts", Account, str(account_id),
+        permission_check=lambda r: require_account_access(user, r, min_role="member"),
+        history=False,
+    )
     log_action(user["user_id"], "get", "accounts", str(account_id))
-    return df.to_dict(orient="records")
+    return row
+
+@router.get("/{account_id}/history", response_model=list[AccountOut])
+def get_account_history(account_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
+    versions = fetch_record(
+        "accounts", Account, str(account_id),
+        permission_check=lambda r: require_account_access(user, r, min_role="member"),
+        history=True, page=page, sort_by="updated_at",
+    )
+    log_action(user["user_id"], "get_history", "accounts", str(account_id), {"offset": page["offset"], "limit": page["limit"]})
+    return versions
