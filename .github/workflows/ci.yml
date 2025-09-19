@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ "**" ]   # runs on every push, including topic branches
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction --no-ansi
+      - name: Ruff (lint)
+        run: poetry run ruff check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction --no-ansi
+      - name: mypy
+        run: poetry run mypy .
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction --no-ansi
+      - name: Run unit tests
+        env:
+          APP_ENV: test
+          SECRET_KEY: test_only_key   # dummy for tests
+        run: poetry run pytest -q --disable-warnings --maxfail=1
+
+
+  # Optional hardening (recommended)
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install Poetry + tools
+        run: |
+          pip install poetry pip-audit bandit
+          poetry install --no-interaction --no-ansi
+      - name: pip-audit
+        run: pip-audit -r <(poetry export -f requirements.txt --without-hashes) || true
+      - name: bandit (lightweight)
+        run: bandit -r app -ll || true
