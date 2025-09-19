@@ -1,0 +1,95 @@
+name: Promote to STAGING/PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: "Where to promote"
+        required: true
+        type: choice
+        options: [staging, prod]
+      git_ref:
+        description: "Commit SHA or ref (default = latest main)"
+        required: false
+        default: "main"
+
+env:
+  AWS_REGION: eu-west-1
+  ECR_REPOSITORY: household-finances
+  CONTAINER_NAME: api
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_env }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS creds
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push image
+        id: build
+        run: |
+          IMAGE_TAG=${{ steps.sha.outputs.short }}
+          ECR_REGISTRY=${{ steps.ecr.outputs.registry }}
+          ECR_REPO="$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}"
+          docker build -t "${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" .
+          docker tag "${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" "$ECR_REPO:$IMAGE_TAG"
+          docker tag "${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" "$ECR_REPO:latest"
+          docker push "$ECR_REPO:$IMAGE_TAG"
+          docker push "$ECR_REPO:latest"
+          echo "image=$ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Pick task def
+        id: pick
+        run: |
+          if [ "${{ inputs.target_env }}" = "staging" ]; then echo "td=.aws/taskdef.staging.json" >> $GITHUB_OUTPUT; fi
+          if [ "${{ inputs.target_env }}" = "prod" ]; then echo "td=.aws/taskdef.prod.json" >> $GITHUB_OUTPUT; fi
+
+      - name: Render ECS task def
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ steps.pick.outputs.td }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build.outputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ secrets.ECS_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Smoke test
+        run: |
+          for i in {1..20}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.HEALTHCHECK_URL }}")
+            if [ "$code" = "200" ]; then
+              echo "Service healthy"; exit 0
+            fi
+            echo "Waiting... ($i/20)"
+            sleep 10
+          done
+          echo "Service did not become healthy" >&2
+          exit 1
