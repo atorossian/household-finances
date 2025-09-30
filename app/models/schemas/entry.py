@@ -4,6 +4,7 @@ from app.models.enums import EntryType, Category
 from uuid import UUID, uuid4
 from datetime import datetime, timezone, date
 
+
 class Entry(BaseModel):
     entry_id: UUID = Field(default_factory=uuid4)
     user_id: UUID
@@ -21,6 +22,7 @@ class Entry(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+
 class EntryCreate(BaseModel):
     user_id: UUID
     account_name: str
@@ -32,6 +34,7 @@ class EntryCreate(BaseModel):
     amount: float
     description: str = ""
 
+
 class EntryUpdate(BaseModel):
     user_id: UUID
     account_name: str
@@ -42,6 +45,7 @@ class EntryUpdate(BaseModel):
     category: Category
     amount: float
     description: str = ""
+
 
 class EntryOut(BaseModel):
     entry_id: str

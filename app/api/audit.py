@@ -7,6 +7,7 @@ from app.services.utils import page_params
 
 router = APIRouter()
 
+
 @router.get("/logs", response_model=list[AuditLog])
 def list_audit_logs(
     user_id: str | None = Query(None),
@@ -40,6 +41,6 @@ def list_audit_logs(
         df = df.sort_values(by=sort_col, ascending=False)
 
     # pagination slice
-    df = df.iloc[page["offset"]: page["offset"] + page["limit"]]
-    
+    df = df.iloc[page["offset"] : page["offset"] + page["limit"]]
+
     return df.to_dict(orient="records")

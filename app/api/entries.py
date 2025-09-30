@@ -1,27 +1,35 @@
-from app.services.storage import save_version, load_versions, mark_old_version_as_stale, resolve_id_by_name, soft_delete_record, log_action
+from app.services.storage import (
+    save_version,
+    load_versions,
+    mark_old_version_as_stale,
+    resolve_id_by_name,
+    soft_delete_record,
+    log_action,
+)
 from datetime import datetime, timezone
 from app.models.schemas.entry import EntryCreate, Entry, EntryUpdate, EntryOut
 from app.models.schemas.account import Account
 from app.models.schemas.household import Household
-from app.models.schemas.membership import UserAccount, UserHousehold
-from uuid import UUID, uuid4
-import boto3
+from uuid import uuid4, UUID
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 import io
 from app.services.auth import get_current_user
 from app.services.roles import validate_entry_permissions
 from app.services.utils import page_params
+from app.models.enums import EntryType, Category
 from app.services.fetchers import fetch_record
+
 
 router = APIRouter()
 
+
 @router.post("/")
 def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
-    account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name",  "account_id")
+    account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
-    
-    validate_entry_permissions(str(payload.user_id), account_id, household_id, acting_user=user)
+
+    validate_entry_permissions(payload.user_id, account_id, household_id, acting_user=user)
 
     entry = Entry(
         entry_id=uuid4(),
@@ -43,6 +51,7 @@ def create_entry(payload: EntryCreate, user=Depends(get_current_user)):
     log_action(user["user_id"], "create", "entries", str(entry.entry_id), payload.model_dump())
 
     return {"message": "Entry created", "entry_id": str(entry.entry_id)}
+
 
 @router.post("/import")
 def import_entries_upload(
@@ -132,9 +141,9 @@ def import_entries_upload(
     for _, row in df.iterrows():
         try:
             # Permission: entry belongs to the acting user
-            acting_user_id = str(user["user_id"])
-            account_id = str(row["account_id"])
-            household_id = str(row["household_id"])
+            acting_user_id = user["user_id"]
+            account_id = row["account_id"]
+            household_id = row["household_id"]
 
             # enforce permissions (also checks membership + assignment)
             validate_entry_permissions(
@@ -145,15 +154,15 @@ def import_entries_upload(
             )
 
             entry = Entry(
-                user_id=acting_user_id,
-                account_id=account_id,
-                household_id=household_id,
+                user_id=UUID(acting_user_id),
+                account_id=UUID(account_id),
+                household_id=UUID(household_id),
                 entry_date=row["entry_date"],
                 value_date=row["value_date"],
-                type=str(row["type"]).strip().lower(),
-                category=str(row["category"]).strip().lower(),
+                type=EntryType(str(row["type"]).strip().lower()),
+                category=Category(str(row["category"]).strip().lower()),
                 amount=row["amount"],
-                description=(None if pd.isna(row.get("description")) else str(row.get("description"))),
+                description=str(row.get("description")),
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
                 is_current=True,
@@ -171,6 +180,7 @@ def import_entries_upload(
     log_action(user["user_id"], "import", "entries", None, {"imported": len(imported_ids), "skipped": skipped})
     return {"imported": len(imported_ids), "skipped": skipped, "entry_ids": imported_ids}
 
+
 @router.put("/{entry_id}")
 def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
@@ -181,7 +191,7 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
     if current.empty:
         raise HTTPException(status_code=404, detail="Entry not found")
 
-    validate_entry_permissions(str(payload.user_id), account_id, household_id, user)
+    validate_entry_permissions(payload.user_id, account_id, household_id, user)
 
     # Stale old version
     mark_old_version_as_stale("entries", entry_id, "entry_id")
@@ -193,8 +203,8 @@ def update_entry(entry_id: UUID, payload: EntryUpdate, user=Depends(get_current_
         household_id=household_id,
         entry_date=payload.entry_date,
         value_date=payload.value_date,
-        type=payload.type,
-        category=payload.category,
+        type=EntryType(payload.type),
+        category=Category(payload.category),
         amount=payload.amount,
         description=payload.description,
         created_at=datetime.now(timezone.utc),
@@ -218,10 +228,8 @@ def delete_entry(entry_id: UUID, user=Depends(get_current_user)):
     row = current.iloc[0].to_dict()
     validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
 
-    return soft_delete_record(
-        "entries", str(entry_id), "entry_id", Entry,
-        user=user, require_owner=False
-    )
+    return soft_delete_record("entries", entry_id, "entry_id", Entry, user=user, require_owner=False)
+
 
 @router.get("/", response_model=list[EntryOut])
 def list_current_entries(user=Depends(get_current_user), page=Depends(page_params)):
@@ -256,25 +264,32 @@ def list_current_entries(user=Depends(get_current_user), page=Depends(page_param
 
     return df.to_dict(orient="records")
 
+
 @router.get("/{entry_id}", response_model=EntryOut)
 def get_entry(entry_id: UUID, user=Depends(get_current_user)):
     row = fetch_record(
-        "entries", Entry, str(entry_id),
+        "entries",
+        Entry,
+        entry_id,
         permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
         history=False,
     )
     log_action(user["user_id"], "get", "entries", str(entry_id))
     return row
 
+
 @router.get("/{entry_id}/history", response_model=list[EntryOut])
 def get_entry_history(entry_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
     versions = fetch_record(
-        "entries", Entry, str(entry_id),
+        "entries",
+        Entry,
+        entry_id,
         permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
-        history=True, page=page, sort_by="updated_at",
+        history=True,
+        page=page,
+        sort_by="updated_at",
     )
     log_action(
-        user["user_id"], "get_history", "entries", str(entry_id),
-        {"offset": page["offset"], "limit": page["limit"]}
+        user["user_id"], "get_history", "entries", str(entry_id), {"offset": page["offset"], "limit": page["limit"]}
     )
     return versions

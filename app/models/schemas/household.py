@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import Field
 from uuid import UUID, uuid4
-from datetime import datetime, timezone
+from datetime import timezone
 
 
 class Household(BaseModel):
@@ -14,8 +14,10 @@ class Household(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+
 class HouseholdCreate(BaseModel):
     name: str
+
 
 class HouseholdOut(BaseModel):
     household_id: str

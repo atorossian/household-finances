@@ -1,13 +1,13 @@
-import os
 import pytest
 from fastapi.testclient import TestClient
 from moto import mock_aws
 import boto3
 import app.main as app
-from app.config import config
+from app.config import settings
 from uuid import uuid4
 from app.services.storage import load_versions, save_version
 from app.models.schemas.user import User
+
 
 def _empty_bucket(s3, bucket_name: str):
     """Helper: delete all objects in the bucket."""
@@ -18,16 +18,16 @@ def _empty_bucket(s3, bucket_name: str):
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_s3():
-    env = os.getenv("APP_ENV", "dev")
-    bucket_name = config.get("s3", {}).get("bucket_name", "household-finances-dev")
+    env = settings.app_env
+    bucket_name = settings.s3_bucket
 
     if env == "dev":
         with mock_aws():
-            s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
+            s3 = boto3.client("s3", region_name=settings.aws_region)
             s3.create_bucket(Bucket=bucket_name)
             yield s3, bucket_name
     else:
-        s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
+        s3 = boto3.client("s3", region_name=settings.aws_region)
         yield s3, bucket_name
         # Final cleanup after all tests
         _empty_bucket(s3, bucket_name)
@@ -44,6 +44,7 @@ def clean_bucket(setup_s3):
 @pytest.fixture(scope="function")
 def client():
     return TestClient(app.app)
+
 
 @pytest.fixture(scope="function")
 def superuser_client(client):
@@ -71,6 +72,7 @@ def superuser_client(client):
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
     return client, headers
 
+
 @pytest.fixture
 def auth_headers(client):
     email = f"user-{uuid4().hex[:6]}@example.com"
@@ -79,6 +81,7 @@ def auth_headers(client):
     r = client.post("/users/login", json={"email": email, "password": "Test123!"})
     tokens = r.json()
     return {"Authorization": f"Bearer {tokens['access_token']}"}
+
 
 @pytest.fixture
 def another_auth_headers(client):
@@ -89,13 +92,10 @@ def another_auth_headers(client):
     tokens = r.json()
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
+
 @pytest.fixture
 def another_user(client: TestClient):
-    payload = {
-        "email": f"another-{uuid4().hex[:6]}@example.com",
-        "user_name": "anotheruser",
-        "password": "Another123!"
-    }
+    payload = {"email": f"another-{uuid4().hex[:6]}@example.com", "user_name": "anotheruser", "password": "Another123!"}
     r = client.post("/users/register", json=payload)
     assert r.status_code == 200
     user_id = r.json()["user_id"]
@@ -110,11 +110,7 @@ def another_user(client: TestClient):
 
 @pytest.fixture
 def third_user(client: TestClient):
-    payload = {
-        "email": f"third-{uuid4().hex[:6]}@example.com",
-        "user_name": "thirduser",
-        "password": "Third123!"
-    }
+    payload = {"email": f"third-{uuid4().hex[:6]}@example.com", "user_name": "thirduser", "password": "Third123!"}
     r = client.post("/users/register", json=payload)
     assert r.status_code == 200
     user_id = r.json()["user_id"]

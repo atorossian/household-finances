@@ -12,6 +12,7 @@ class Account(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+
 class AccountOut(BaseModel):
     account_id: str
     household_id: str

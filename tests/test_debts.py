@@ -1,4 +1,3 @@
-import pytest
 from fastapi.testclient import TestClient
 from uuid import uuid4
 from datetime import date
@@ -34,9 +33,7 @@ def test_debt_creates_entries(client: TestClient):
     client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
 
     # --- Assign user to account ---
-    r = client.post(f"/accounts/{account_id}/assign-user",
-                    params={"target_user_id": user_id},
-                    headers=headers)
+    r = client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
     assert r.status_code == 200
 
     # --- Create debt ---

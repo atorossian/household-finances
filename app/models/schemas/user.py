@@ -10,7 +10,7 @@ class User(BaseModel):
     hashed_password: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    password_changed_at: datetime | None = None   # track last password change
+    password_changed_at: datetime | None = None  # track last password change
     is_superuser: bool = False
     is_suspended: bool = False
     suspended_at: datetime | None = None
@@ -18,6 +18,7 @@ class User(BaseModel):
     is_active: bool = True
     is_deleted: bool = False
     is_current: bool = True
+
 
 class RefreshToken(BaseModel):
     refresh_token_id: UUID = Field(default_factory=uuid4)
@@ -29,19 +30,23 @@ class RefreshToken(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+
 class RegisterRequest(BaseModel):
     user_name: str
     email: EmailStr
     password: str  # Raw password; will be hashed on creation
 
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
 
 class UserUpdateRequest(BaseModel):
     user_name: str | None = None
     email: EmailStr | None = None
     password: str | None = None
+
 
 class PasswordHistory(BaseModel):
     history_id: UUID
@@ -51,6 +56,7 @@ class PasswordHistory(BaseModel):
     is_current: bool = True
     is_deleted: bool = False
 
+
 class PasswordResetToken(BaseModel):
     token_id: UUID
     user_id: UUID
@@ -58,6 +64,7 @@ class PasswordResetToken(BaseModel):
     expires_at: datetime
     used: bool = False
     created_at: datetime
+
 
 class UserOut(BaseModel):
     user_id: str

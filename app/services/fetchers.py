@@ -1,11 +1,13 @@
 from typing import Callable, Optional
 from fastapi import HTTPException
+from uuid import UUID
 from app.services.storage import load_versions
+
 
 def fetch_record(
     record_type: str,
     schema,
-    record_id: str,
+    record_id: UUID,
     *,
     permission_check: Optional[Callable[[dict], None]] = None,
     history: bool = False,

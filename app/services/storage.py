@@ -4,33 +4,31 @@ import boto3
 import json
 import io
 import pyarrow as pa
-import botocore
 from datetime import datetime, timezone, date, timedelta
-import pyarrow.dataset as ds
 import pandas as pd
 from typing import Type, Optional
 from fastapi import HTTPException
 from dateutil.relativedelta import relativedelta
-from app.config import config
+from app.config import settings
 from app.models.schemas.entry import Entry
-from app.models.schemas.user import User, RefreshToken
-from app.models.schemas.household import Household
-from app.models.schemas.account import Account
+from app.models.schemas.user import RefreshToken
 from app.models.schemas.membership import UserAccount, UserHousehold
 from app.models.schemas.audit import AuditLog
 from app.models.schemas.debt import Debt
+from app.models.enums import EntryType, Category
 
-
-s3 = boto3.client("s3", region_name=config.get("region", "eu-west-1"))
-BUCKET_NAME = config.get("s3", {}).get("bucket_name", "household-finances-dev")
+aws_region = settings.aws_region
+s3 = boto3.client("s3", region_name=aws_region)
+BUCKET_NAME = settings.s3_bucket
 SENSITIVE_FIELDS = {"password", "hashed_password", "access_token", "refresh_token"}
 
+
 def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str = "id") -> None:
-    prefix = f"{record_type}/{id_column}={record_id}/"
+    prefix = f"{record_type}/{id_column}={str(record_id)}/"
     result = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=prefix)
 
     if "Contents" not in result:
-        raise HTTPException(status_code=404, detail=f"No versions found for {record_type} {record_id}")
+        raise HTTPException(status_code=404, detail=f"No versions found for {record_type} {str(record_id)}")
 
     for obj in result["Contents"]:
         key = obj["Key"]
@@ -46,17 +44,14 @@ def mark_old_version_as_stale(record_type: str, record_id: UUID, id_column: str 
             buffer.seek(0)
             s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=buffer.read())
 
-def cascade_stale(record_type: str, record_id: str, mapping_type: str, foreign_key: str):
-    df = load_versions(mapping_type)
-    matches = df[
-        (df[foreign_key] == record_id) &
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False))
-    ]
+
+def cascade_stale(record_type: str, record_id: UUID, mapping_type: str, foreign_key: str):
+    df = load_versions(mapping_type, schema=record_type)
+    matches = df[(df[foreign_key] == record_id) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
 
     for _, row in matches.iterrows():
         mark_old_version_as_stale(mapping_type, row["mapping_id"], "mapping_id")
-        
+
 
 def save_version(record, record_type: str, id_field: str):
     # Handle both Pydantic models and plain dicts
@@ -93,11 +88,8 @@ def save_version(record, record_type: str, id_field: str):
     out_buffer = pa.BufferOutputStream()
     pq.write_table(table, out_buffer)
 
-    s3.put_object(
-        Bucket=BUCKET_NAME,
-        Key=key,
-        Body=out_buffer.getvalue().to_pybytes()
-    )
+    s3.put_object(Bucket=BUCKET_NAME, Key=key, Body=out_buffer.getvalue().to_pybytes())
+
 
 def _empty_df(schema):
     if schema is None:
@@ -108,12 +100,13 @@ def _empty_df(schema):
         return pd.DataFrame(columns=list(schema.__fields__.keys()))
     return pd.DataFrame(columns=list(schema))
 
+
 def load_versions(
     record_type: str,
     schema,
-    record_id: str | None = None,
+    record_id: UUID | None = None,
     start: datetime | None = None,
-    end: datetime | None = None
+    end: datetime | None = None,
 ):
     prefix = f"{record_type}/"
 
@@ -146,14 +139,10 @@ def load_versions(
     return pd.concat(dfs, ignore_index=True)
 
 
-def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_field: str) -> str:
+def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_field: str) -> UUID:
     df = load_versions(record_type, schema)
 
-    match = df[
-        (df[name_field] == name) &
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False))
-    ]
+    match = df[(df[name_field] == name) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} '{name}' not found")
@@ -161,29 +150,26 @@ def resolve_id_by_name(record_type: str, name: str, schema, name_field: str, id_
     return match.iloc[0][id_field]
 
 
-def resolve_name_by_id(record_type: str, record_id: str, schema, id_field: str, name_field: str) -> str:
+def resolve_name_by_id(record_type: str, record_id: UUID, schema, id_field: str, name_field: str) -> UUID:
     df = load_versions(record_type, schema)
 
-    match = df[
-        (df[id_field] == record_id) &
-        (df["is_current"]) &
-        (~df["is_deleted"].fillna(False))
-    ]
+    match = df[(df[id_field] == record_id) & (df["is_current"]) & (~df["is_deleted"].fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} '{record_id}' not found")
 
     return match.iloc[0][name_field]
 
+
 def soft_delete_record(
     record_type: str,
-    record_id: str,
+    record_id: UUID,
     id_field: str,
     model_cls: Type,
     *,
     user: Optional[dict] = None,
     owner_field: str = "user_id",
-    require_owner: bool = True
+    require_owner: bool = True,
 ):
     """
     Generic soft delete helper:
@@ -193,11 +179,7 @@ def soft_delete_record(
     """
     df = load_versions(record_type, model_cls)
 
-    match = df[
-        (df[id_field] == str(record_id)) &
-        (df["is_current"]) &
-        (~df.get("is_deleted", False).fillna(False))
-    ]
+    match = df[(df[id_field] == str(record_id)) & (df["is_current"]) & (~df.get("is_deleted", False).fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=404, detail=f"{record_type[:-1].capitalize()} not found")
@@ -218,11 +200,13 @@ def soft_delete_record(
     data = row.to_dict()
     # ensure id is present
     data[id_field] = data.get(id_field) or str(record_id)
-    data.update({
-        "updated_at": now,
-        "is_current": True,   # latest version will indicate deleted
-        "is_deleted": True,
-    })
+    data.update(
+        {
+            "updated_at": now,
+            "is_current": True,  # latest version will indicate deleted
+            "is_deleted": True,
+        }
+    )
 
     # instantiate model and save
     deleted_obj = model_cls(**data)
@@ -245,9 +229,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
     ua_df = load_versions("user_accounts", UserAccount)
 
     for _, r in ua_df[
-        (ua_df["user_id"] == str(user_id)) &
-        (ua_df["is_current"]) &
-        (~ua_df.get("is_deleted", False).fillna(False))
+        (ua_df["user_id"] == str(user_id)) & (ua_df["is_current"]) & (~ua_df.get("is_deleted", False).fillna(False))
     ].iterrows():
         mark_old_version_as_stale("user_accounts", r["mapping_id"], "mapping_id")
         data = r.to_dict()
@@ -259,9 +241,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
     uh_df = load_versions("user_households", UserHousehold)
 
     for _, r in uh_df[
-        (uh_df["user_id"] == str(user_id)) &
-        (uh_df["is_current"]) &
-        (~uh_df.get("is_deleted", False).fillna(False))
+        (uh_df["user_id"] == str(user_id)) & (uh_df["is_current"]) & (~uh_df.get("is_deleted", False).fillna(False))
     ].iterrows():
         mark_old_version_as_stale("user_households", r["mapping_id"], "mapping_id")
         data = r.to_dict()
@@ -272,10 +252,7 @@ def _cascade_user_deletion(user_id: str, now: datetime):
     # refresh_tokens (invalidate)
     rt_df = load_versions("refresh_tokens", RefreshToken)
 
-    for _, r in rt_df[
-        (rt_df["user_id"] == str(user_id)) &
-        (rt_df["is_current"])
-    ].iterrows():
+    for _, r in rt_df[(rt_df["user_id"] == str(user_id)) & (rt_df["is_current"])].iterrows():
         mark_old_version_as_stale("refresh_tokens", r["refresh_token_id"], "refresh_token_id")
         # Optionally save a deleted refresh token object if you have a schema, else skipping saving a deleted record is fine.
 
@@ -292,9 +269,9 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
     entries_df = load_versions("entries", Entry)
 
     sel = entries_df[
-        (entries_df["debt_id"] == str(debt_id)) &
-        (entries_df["is_current"]) &
-        (~entries_df.get("is_deleted", False).fillna(False))
+        (entries_df["debt_id"] == str(debt_id))
+        & (entries_df["is_current"])
+        & (~entries_df.get("is_deleted", False).fillna(False))
     ]
 
     for _, row in sel.iterrows():
@@ -304,8 +281,10 @@ def _cascade_debt_deletion(debt_id: str, debt_row: pd.Series, now: datetime):
         save_version(Entry(**data), "entries", "entry_id")
         log_action(debt_row.get("user_id"), "cascade_delete", "entries", row["entry_id"])
 
-def log_action(user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None):
 
+def log_action(
+    user_id: str | None, action: str, resource_type: str, resource_id: str | None, details: dict | None = None
+):
     # Normalize details: convert UUIDs and datetimes to strings
     normalized = {}
     for k, v in (details or {}).items():
@@ -317,7 +296,7 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
             normalized[k] = v.isoformat()
         else:
             normalized[k] = v
-    details_json = json.dumps(normalized) 
+    details_json = json.dumps(normalized)
 
     entry = AuditLog(
         user_id=user_id,
@@ -326,7 +305,7 @@ def log_action(user_id: str | None, action: str, resource_type: str, resource_id
         resource_id=resource_id,
         details=details_json,
     )
-    
+
     save_version(entry, "audit_logs", "log_id")
 
 
@@ -369,8 +348,8 @@ def generate_debt_entries(
             entry_date=due_date,
             value_date=due_date,
             debt_id=debt.debt_id,
-            type="expense",
-            category="financing",
+            type=EntryType("expense"),
+            category=Category("financing"),
             amount=installment_value,
             description=f"Installment {i+1}/{debt.installments} - {debt.name}",
             created_at=datetime.now(timezone.utc),
