@@ -3,6 +3,12 @@ from app.api import entries, users, household, accounts, summaries, debts, audit
 
 app = FastAPI()
 
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+
 app.include_router(entries.router, prefix="/entries", tags=["Entries"])
 app.include_router(debts.router, prefix="/debts", tags=["Debts"])
 app.include_router(users.router, prefix="/users", tags=["Users"])

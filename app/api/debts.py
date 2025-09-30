@@ -1,4 +1,3 @@
-from calendar import monthrange
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from uuid import uuid4, UUID
@@ -7,29 +6,30 @@ from app.models.schemas.debt import Debt, DebtCreate, DebtOut
 from app.models.schemas.entry import Entry
 from app.models.schemas.account import Account
 from app.models.schemas.household import Household
-from app.models.schemas.membership import UserAccount, UserHousehold
 from app.services.storage import (
-    save_version, resolve_id_by_name, 
-    load_versions, soft_delete_record, 
-    log_action, mark_old_version_as_stale, 
-    generate_debt_entries
+    save_version,
+    resolve_id_by_name,
+    load_versions,
+    soft_delete_record,
+    log_action,
+    mark_old_version_as_stale,
+    generate_debt_entries,
 )
 from app.services.auth import get_current_user
 from app.services.roles import validate_entry_permissions
-from scripts.safe_due_dates import safe_due_date
 from app.services.utils import page_params
 from app.services.fetchers import fetch_record
 
 router = APIRouter()
 
+
 @router.post("/")
 def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     account_id = resolve_id_by_name("accounts", payload.account_name, Account, "name", "account_id")
     household_id = resolve_id_by_name("households", payload.household_name, Household, "name", "household_id")
-    
-    now = datetime.now(timezone.utc)
-    validate_entry_permissions(str(user["user_id"]), account_id, household_id, user)
 
+    now = datetime.now(timezone.utc)
+    validate_entry_permissions(user["user_id"], account_id, household_id, user)
 
     # --- Build and save debt ---
     debt_id = uuid4()
@@ -56,14 +56,15 @@ def create_debt(payload: DebtCreate, user=Depends(get_current_user)):
     entries = generate_debt_entries(debt)
     for e in entries:
         save_version(e, "entries", "entry_id")
-        log_action(user['user_id'], "create", "entries", str(e.entry_id), e.model_dump())
+        log_action(user["user_id"], "create", "entries", str(e.entry_id), e.model_dump())
 
     return {
         "message": "Debt created",
         "debt_id": str(debt.debt_id),
         "installments": payload.installments,
-        "entries": [str(e.entry_id) for e in entries]
+        "entries": [str(e.entry_id) for e in entries],
     }
+
 
 @router.put("/{debt_id}")
 def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
@@ -74,7 +75,7 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Debt not found")
 
     row = match.iloc[0].to_dict()
-    mark_old_version_as_stale("debts", str(debt_id), "debt_id")
+    mark_old_version_as_stale("debts", debt_id, "debt_id")
 
     updated = Debt(
         **{**row, **payload},
@@ -88,7 +89,9 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
 
     # Load existing debt entries
     entries = load_versions("entries", Entry)
-    debt_entries = entries[(entries["debt_id"] == str(debt_id)) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))]
+    debt_entries = entries[
+        (entries["debt_id"] == debt_id) & (entries["is_current"]) & (~entries["is_deleted"].fillna(False))
+    ]
 
     today = datetime.now(timezone.utc).date()
 
@@ -111,13 +114,13 @@ def update_debt(debt_id: UUID, payload: dict, user=Depends(get_current_user)):
     entries = generate_debt_entries(updated, start_date=today)
     for e in entries:
         save_version(e, "entries", "entry_id")
-        log_action(user['user_id'], "update", "entries", str(e.entry_id), e.model_dump())
+        log_action(user["user_id"], "update", "entries", str(e.entry_id), e.model_dump())
 
     return {
         "message": "Debt update",
         "debt_id": str(updated.debt_id),
-        "installments": payload.installments,
-        "entries": [str(e.entry_id) for e in entries]
+        "installments": payload.get("installments"),
+        "entries": [str(e.entry_id) for e in entries],
     }
 
 
@@ -132,10 +135,8 @@ def delete_debt(debt_id: UUID, user=Depends(get_current_user)):
     row = current.iloc[0].to_dict()
     validate_entry_permissions(row["user_id"], row["account_id"], row["household_id"], user)
 
-    return soft_delete_record(
-        "debts", str(debt_id), "debt_id", Debt,
-        user=user, owner_field="user_id", require_owner=True
-    )
+    return soft_delete_record("debts", debt_id, "debt_id", Debt, user=user, owner_field="user_id", require_owner=True)
+
 
 @router.get("/", response_model=list[DebtOut])
 def list_debts(user=Depends(get_current_user), page=Depends(page_params)):
@@ -168,25 +169,32 @@ def list_debts(user=Depends(get_current_user), page=Depends(page_params)):
     log_action(user["user_id"], "list", "debts", None, {"count": len(df)})
     return df.to_dict(orient="records")
 
+
 @router.get("/{debt_id}", response_model=DebtOut)
 def get_debt(debt_id: UUID, user=Depends(get_current_user)):
     row = fetch_record(
-        "debts", Debt, str(debt_id),
+        "debts",
+        Debt,
+        debt_id,
         permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
         history=False,
     )
     log_action(user["user_id"], "get", "debts", str(debt_id))
     return row
 
+
 @router.get("/{debt_id}/history", response_model=list[DebtOut])
 def get_debt_history(debt_id: UUID, user=Depends(get_current_user), page=Depends(page_params)):
     versions = fetch_record(
-        "debts", Debt, str(debt_id),
+        "debts",
+        Debt,
+        debt_id,
         permission_check=lambda r: validate_entry_permissions(r["user_id"], r["account_id"], r["household_id"], user),
-        history=True, page=page, sort_by="updated_at",
+        history=True,
+        page=page,
+        sort_by="updated_at",
     )
     log_action(
-        user["user_id"], "get_history", "debts", str(debt_id),
-        {"offset": page["offset"], "limit": page["limit"]}
+        user["user_id"], "get_history", "debts", str(debt_id), {"offset": page["offset"], "limit": page["limit"]}
     )
     return versions

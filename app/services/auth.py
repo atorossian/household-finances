@@ -1,18 +1,18 @@
 import jwt
-from fastapi import Header, HTTPException, Depends
-import pandas as pd
+from fastapi import HTTPException, Depends
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import uuid4, UUID
 from app.services.storage import save_version, load_versions
-from app.models.schemas.user import User, RefreshToken
+from app.models.schemas.user import User
 from fastapi.security import OAuth2PasswordBearer
-from app.config import config
+from app.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
-SECRET_KEY = config.get("auth", {}).get("secret_key")
-ALGORITHM = config.get("auth", {}).get("algorithm", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = config.get("auth", {}).get("access_token_expire_minutes", 15)
-REFRESH_TOKEN_EXPIRE_DAYS = config.get("auth", {}).get("refresh_token_expire_days", 7)
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.encoding_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
+
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
@@ -22,9 +22,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
 def create_refresh_token(user_id: str):
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    token_id = str(uuid4())  # unique ID for rotation
+    token_id = str(uuid4())
     payload = {"sub": str(user_id), "jti": token_id, "exp": expire}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -38,14 +39,15 @@ def create_refresh_token(user_id: str):
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
         "refresh_tokens",
-        "refresh_token_id"
+        "refresh_token_id",
     )
     return token
+
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        user_id: UUID = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
     except jwt.ExpiredSignatureError:
@@ -53,11 +55,8 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    users_df = users_df = load_versions("users", User, record_id=user_id)
-    match = users_df[
-        (users_df["is_current"]) &
-        (~users_df.get("is_deleted", False).fillna(False))
-    ]
+    users_df = load_versions("users", User, record_id=user_id)
+    match = users_df[(users_df["is_current"]) & (~users_df.get("is_deleted", False).fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=401, detail="User not found")

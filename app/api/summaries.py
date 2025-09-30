@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 import pandas as pd
+from uuid import UUID
 from app.services.storage import load_versions, resolve_name_by_id
 from app.services.auth import get_current_user
 from app.services.roles import require_household_role
 from app.models.schemas.entry import Entry
 from app.models.schemas.account import Account
 from app.models.schemas.household import Household
-from app.models.schemas.membership import UserHousehold
+from app.models.enums import Role
 
 router = APIRouter()
+
 
 @router.get("/summary")
 def get_entry_summary(
@@ -17,17 +19,13 @@ def get_entry_summary(
     end: str | None = Query(None, description="End month YYYY-MM"),
     last_n_months: int | None = Query(None, description="Last N months to include"),
     type: str | None = Query(None, description="Optional filter: income or expense"),
-    household_id: str | None = Query(None, description="Restrict to a specific household"),
+    household_id: UUID | None = Query(None, description="Restrict to a specific household"),
     user=Depends(get_current_user),
 ):
     df = load_versions("entries", Entry)
 
     # --- Base filter ---
-    df = df[
-        (df["is_current"])
-        & (~df["is_deleted"].fillna(False))
-        & (df["user_id"] == str(user["user_id"]))
-    ]
+    df = df[(df["is_current"]) & (~df["is_deleted"].fillna(False)) & (df["user_id"] == str(user["user_id"]))]
     if df.empty:
         return {"message": "No entries available"}
 
@@ -36,9 +34,9 @@ def get_entry_summary(
 
     # --- Household filter ---
     if household_id:
-        require_household_role(user, str(household_id), required_role="member")
+        require_household_role(user, household_id, required_role=Role("member"))
         df = df[df["household_id"] == household_id]
-    
+
     # --- Date filtering ---
     if last_n_months:
         today = pd.to_datetime("today").normalize()
@@ -58,8 +56,12 @@ def get_entry_summary(
         return {"message": "No entries for given filters"}
 
     # --- Resolve account & household names ---
-    df["account_name"] = df["account_id"].apply(lambda x: resolve_name_by_id("accounts", x, Account, "account_id", "name"))
-    df["household_name"] = df["household_id"].apply(lambda x: resolve_name_by_id("households", x, Household, "household_id", "name"))
+    df["account_name"] = df["account_id"].apply(
+        lambda x: resolve_name_by_id("accounts", x, Account, "account_id", "name")
+    )
+    df["household_name"] = df["household_id"].apply(
+        lambda x: resolve_name_by_id("households", x, Household, "household_id", "name")
+    )
 
     # --- Aggregate summaries ---
     total = df["amount"].sum()
@@ -67,27 +69,17 @@ def get_entry_summary(
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-   # --- Trends ---
+    # --- Trends ---
     type_trends, category_trends = None, None
     if last_n_months or (start and end):
         # Normalize month to string early
         df["month"] = df["month"].astype(str)
 
         # Type-level trends
-        type_trends = (
-            df.groupby(["month", "type"])["amount"]
-            .sum()
-            .reset_index()
-            .to_dict(orient="records")
-        )
+        type_trends = df.groupby(["month", "type"])["amount"].sum().reset_index().to_dict(orient="records")
 
         # Category-level trends
-        category_trends = (
-            df.groupby(["month", "category"])["amount"]
-            .sum()
-            .reset_index()
-            .to_dict(orient="records")
-        )
+        category_trends = df.groupby(["month", "category"])["amount"].sum().reset_index().to_dict(orient="records")
     return {
         "total": round(total, 2),
         "by_category": {k: round(v, 2) for k, v in by_category.items()},

@@ -1,4 +1,3 @@
-import pytest
 from uuid import uuid4
 from fastapi.testclient import TestClient
 
@@ -26,7 +25,6 @@ def test_register_login_update_change_password(client: TestClient, superuser_cli
     assert response.status_code == 200
     body = response.json()
     access_token = body["access_token"]
-    refresh_token = body["refresh_token"]
     assert body["token_type"] == "bearer"
 
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -45,7 +43,6 @@ def test_register_login_update_change_password(client: TestClient, superuser_cli
     account_payload = {"name": "Test Account", "household_id": household_id}
     r = client.post("/accounts/", json=account_payload, headers=headers)
     assert r.status_code == 200
-    account_id = r.json()["account_id"]
 
     # --- Update user info ---
     update_payload = {"email": "newemail@example.com"}
@@ -59,9 +56,7 @@ def test_register_login_update_change_password(client: TestClient, superuser_cli
         "current_password": register_payload["password"],
         "new_password": "NewPassw0rd!",
     }
-    response = client.post(
-        "/users/change-password", params=change_pw_payload, headers=headers
-    )
+    response = client.post("/users/change-password", params=change_pw_payload, headers=headers)
     assert response.status_code == 200
     body = response.json()
     assert body["message"].startswith("Password changed successfully")

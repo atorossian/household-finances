@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import HTTPException, Depends, Query
 from app.services.auth import get_current_user
 import re
-from datetime import datetime,timezone
+from datetime import datetime, timezone
 import pandas as pd
 import os
 import boto3
@@ -25,21 +25,25 @@ def validate_password_strength(password: str):
         raise HTTPException(status_code=400, detail="Password must contain at least one digit")
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
         raise HTTPException(status_code=400, detail="Password must contain at least one special character")
-    
+
+
 def is_password_expired(user_row):
     if not user_row.get("password_changed_at"):
         return False
     last_change = pd.to_datetime(user_row["password_changed_at"])
     return (datetime.now(timezone.utc) - last_change).days >= PASSWORD_EXPIRY_DAYS
 
+
 def normalize_email(email: str) -> str:
     return email.strip().lower()
+
 
 # AWS SES setup
 SES_REGION = os.getenv("SES_REGION", "us-east-1")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@yourdomain.com")
 
 ses_client = boto3.client("ses", region_name=SES_REGION)
+
 
 def send_email(recipient: str, subject: str, body: str) -> bool:
     try:
@@ -58,17 +62,19 @@ def send_email(recipient: str, subject: str, body: str) -> bool:
     except ClientError as e:
         print(f"SES send_email error: {e}")
         return False
-    
+
+
 # Role-based access control dependency
 def require_role(allowed_roles: list[str], user=Depends(get_current_user), resource=None):
     if user.get("is_superuser"):
         return user  # bypass all checks
-    
+
     role = resource.get("role")  # fetched from membership
     if role not in allowed_roles:
         raise HTTPException(status_code=403, detail="Insufficient role permissions")
-    
+
     return user
+
 
 def page_params(
     limit: int = Query(50, ge=1, le=500),

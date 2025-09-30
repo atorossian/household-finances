@@ -1,10 +1,10 @@
 from fastapi.testclient import TestClient
 from uuid import uuid4
 from datetime import date
-import pytest
 import app.main as app
 
 client = TestClient(app.app)
+
 
 def test_summary_flow(client: TestClient):
     # --- Register + login ---
@@ -35,9 +35,7 @@ def test_summary_flow(client: TestClient):
     account_id = r.json()["account_id"]
 
     # --- Assign user to account (so they can create entries) ---
-    r = client.post(f"/accounts/{account_id}/assign-user",
-                    params={"target_user_id": user_id},
-                    headers=headers)
+    r = client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
     assert r.status_code == 200
 
     # --- Create entries ---
@@ -61,7 +59,7 @@ def test_summary_trends(client: TestClient):
     register_payload = {
         "email": f"trend-{uuid4().hex[:6]}@example.com",
         "user_name": "trenduser",
-        "password": "Trend123!"
+        "password": "Trend123!",
     }
     r = client.post("/users/register", json=register_payload)
     user_id = r.json()["user_id"]
@@ -78,9 +76,7 @@ def test_summary_trends(client: TestClient):
     account_id = r.json()["account_id"]
 
     # --- Assign user to account ---
-    r = client.post(f"/accounts/{account_id}/assign-user",
-                    params={"target_user_id": user_id},
-                    headers=headers)
+    r = client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
     assert r.status_code == 200
 
     # --- Two entries in different categories + months ---
@@ -93,7 +89,7 @@ def test_summary_trends(client: TestClient):
         "type": "expense",
         "category": "groceries",
         "amount": 100,
-        "description": "July groceries"
+        "description": "July groceries",
     }
     client.post("/entries/", json=entry1, headers=headers)
 
@@ -106,7 +102,7 @@ def test_summary_trends(client: TestClient):
         "type": "income",
         "category": "salary",
         "amount": 1000,
-        "description": "August salary"
+        "description": "August salary",
     }
     client.post("/entries/", json=entry2, headers=headers)
 
@@ -119,4 +115,3 @@ def test_summary_trends(client: TestClient):
     assert "category_trends" in result
     assert any(trend["type"] == "expense" for trend in result["type_trends"])
     assert any(trend["type"] == "income" for trend in result["type_trends"])
-

@@ -1,0 +1,53 @@
+name: CI (PR)
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-pr-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          pipx install poetry
+          poetry --version
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+            ./.venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi
+
+      - name: Run tests
+        env:
+          # Provide minimal env so settings don’t crash
+          SECRET_KEY: "test-key"
+          AWS_REGION: "eu-west-1"
+          APP_ENV: "test"
+        run: |
+          poetry run pytest -q
