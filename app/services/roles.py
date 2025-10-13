@@ -11,16 +11,20 @@ def get_membership(user_id: UUID, household_id: UUID) -> dict | None:
     df = load_versions("user_households", UserHousehold)
     if df.empty:
         return None
+
+    # Element-wise string comparison, and guard flags correctly
     df = df[
-        (str(df["user_id"]) == str(user_id))
-        & (str(df["household_id"]) == str(household_id))
+        (df["user_id"].astype(str) == str(user_id))
+        & (df["household_id"].astype(str) == str(household_id))
         & (df["is_current"])
         & (~df.get("is_deleted", False).fillna(False))
     ]
     if df.empty:
         return None
-    # If multiple, take the highest role
-    df["weight"] = df["role"].map(ROLE_WEIGHT)
+
+    # Normalize role to str before weighting
+    df = df.copy()
+    df["weight"] = df["role"].astype(str).map(ROLE_WEIGHT)
     row = df.sort_values("weight", ascending=False).iloc[0].to_dict()
     return row
 
@@ -40,7 +44,8 @@ def require_household_role(user: dict, household_id: UUID, required_role: str):
     if not mem:
         raise HTTPException(status_code=403, detail=f"{required_role} role required for this household")
 
-    if ROLE_WEIGHT[mem["role"]] < ROLE_WEIGHT[required_role]:
+    # Ensure we compare with string keys even if mem['role'] is a Role enum
+    if ROLE_WEIGHT[str(mem["role"])] < ROLE_WEIGHT[str(required_role)]:
         raise HTTPException(status_code=403, detail=f"{required_role} role required for this household")
 
 

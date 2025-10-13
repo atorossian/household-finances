@@ -47,8 +47,8 @@ def setup_s3(aws_moto):
     region = settings.aws_region
     s3 = boto3.client("s3", region_name=region)
 
-    # us-east-1 doesn't need LocationConstraint; others do
-    if region == "us-east-1":
+    # eu-west-1 doesn't need LocationConstraint; others do
+    if region == "eu-west-1":
         s3.create_bucket(Bucket=bucket_name)
     else:
         s3.create_bucket(

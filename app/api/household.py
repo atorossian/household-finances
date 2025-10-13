@@ -40,6 +40,7 @@ def create_household(payload: HouseholdCreate, user=Depends(get_current_user)):
 
     # Automatically assign the creator as a member
     mapping = UserHousehold(
+        mapping_id=uuid4(),
         user_id=user["user_id"],
         household_id=household.household_id,
         role=Role("admin"),
