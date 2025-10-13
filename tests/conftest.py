@@ -1,36 +1,65 @@
+# tests/conftest.py
+import os
+from uuid import uuid4
+
+# --- Configure env for tests *before* importing app code ---
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("AWS_REGION", "eu-west-1")
+os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
+os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
+os.environ.setdefault("AWS_SESSION_TOKEN", "test")
+# Ensure we always have a bucket name for tests
+os.environ.setdefault("S3_BUCKET", f"hf-test-{uuid4().hex}")
+
 import pytest
 from fastapi.testclient import TestClient
 from moto import mock_aws
 import boto3
-import app.main as app
+
+# Import after env is set so settings reads the values above
 from app.config import settings
-from uuid import uuid4
+import app.main as app
+
 from app.services.storage import load_versions, save_version
 from app.models.schemas.user import User
 
 
 def _empty_bucket(s3, bucket_name: str):
     """Helper: delete all objects in the bucket."""
+    if not bucket_name:
+        return
     resp = s3.list_objects_v2(Bucket=bucket_name)
     for obj in resp.get("Contents", []):
         s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_s3():
-    env = settings.app_env
-    bucket_name = settings.s3_bucket
+def aws_moto():
+    """Global Moto for all tests (no real AWS calls)."""
+    with mock_aws():
+        yield
 
-    if env == "dev":
-        with mock_aws():
-            s3 = boto3.client("s3", region_name=settings.aws_region)
-            s3.create_bucket(Bucket=bucket_name)
-            yield s3, bucket_name
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_s3(aws_moto):
+    """Create the test bucket inside Moto."""
+    bucket_name = settings.s3_bucket
+    region = settings.aws_region
+    s3 = boto3.client("s3", region_name=region)
+
+    # us-east-1 doesn't need LocationConstraint; others do
+    if region == "us-east-1":
+        s3.create_bucket(Bucket=bucket_name)
     else:
-        s3 = boto3.client("s3", region_name=settings.aws_region)
-        yield s3, bucket_name
-        # Final cleanup after all tests
-        _empty_bucket(s3, bucket_name)
+        s3.create_bucket(
+            Bucket=bucket_name,
+            CreateBucketConfiguration={"LocationConstraint": region},
+        )
+
+    yield s3, bucket_name
+
+    # Final cleanup
+    _empty_bucket(s3, bucket_name)
 
 
 @pytest.fixture(autouse=True)
@@ -58,8 +87,7 @@ def superuser_client(client):
     assert r.status_code == 200
     user_id = r.json()["user_id"]
 
-    # Promote to superuser (direct DB/S3 hack or API if available)
-    # For simplicity, you can patch the user record directly:
+    # Promote to superuser
     users_df = load_versions("users", User, record_id=user_id)
     row = users_df.iloc[0].to_dict()
     row.update({"is_superuser": True})
