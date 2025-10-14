@@ -1,17 +1,21 @@
 from fastapi import APIRouter, HTTPException, Depends
-from uuid import uuid4
+from uuid import uuid4, UUID
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import os
-import boto3
 import secrets
-import re
 import pandas as pd
-from uuid import UUID, uuid4
 import jwt
-from app.services.utils import send_email, validate_password_strength, is_password_expired, normalize_email
-from app.models.schemas.user import RegisterRequest, LoginRequest, UserUpdateRequest, User, RefreshToken, PasswordHistory, PasswordResetToken, UserOut
-from app.models.schemas.membership import UserAccount, UserHousehold
+from app.services.utils import validate_password_strength, is_password_expired, normalize_email
+from app.models.schemas.user import (
+    RegisterRequest,
+    LoginRequest,
+    UserUpdateRequest,
+    User,
+    RefreshToken,
+    PasswordHistory,
+    PasswordResetToken,
+)
 from app.services.storage import load_versions, save_version, mark_old_version_as_stale, soft_delete_record, log_action
 from app.services.auth import get_current_user, create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 from app.services.triggers import on_user_suspended, on_user_unsuspended, on_password_change
@@ -22,6 +26,7 @@ MIN_NUMBER_OF_PREVIOUS_PASSWORDS = 3
 
 router = APIRouter()
 
+
 @router.post("/register")
 def register_user(request: RegisterRequest):
     normalized_email = normalize_email(request.email)
@@ -29,7 +34,7 @@ def register_user(request: RegisterRequest):
 
     if normalized_email in users_df["email"].values:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     validate_password_strength(request.password)
 
     # Check if email matches bootstrap superuser email
@@ -41,7 +46,7 @@ def register_user(request: RegisterRequest):
         user_id=uuid4(),
         user_name=request.user_name,
         email=normalized_email,
-        hashed_password=bcrypt.hashpw(request.password.encode('utf-8'), salt),
+        hashed_password=bcrypt.hashpw(request.password.encode("utf-8"), salt),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_current=True,
@@ -53,33 +58,26 @@ def register_user(request: RegisterRequest):
     save_version(new_user, "users", "user_id")
     log_action(str(new_user.user_id), "register", "users", str(new_user.user_id), request.model_dump())
 
-    return {
-        "message": "User registered successfully",
-        "user_id": str(new_user.user_id)
-    }
+    return {"message": "User registered successfully", "user_id": str(new_user.user_id)}
 
 
 @router.post("/login")
 def login_user(request: LoginRequest):
     users_df = load_versions("users", User)
     normalized_email = normalize_email(request.email)
-    row = users_df[
-        (users_df["email"] == normalized_email)
-        & (users_df["is_current"])
-        & (~users_df["is_deleted"])
-    ]
+    row = users_df[(users_df["email"] == normalized_email) & (users_df["is_current"]) & (~users_df["is_deleted"])]
 
     if row.empty:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
+
     user = row.iloc[0]
 
-    if not bcrypt.checkpw(request.password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
+    if not bcrypt.checkpw(request.password.encode("utf-8"), user["hashed_password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
+
     if is_password_expired(user):
         raise HTTPException(status_code=403, detail="Password expired, please reset your password")
-    
+
     if user["is_suspended"]:
         raise HTTPException(status_code=403, detail="Account is suspended")
 
@@ -90,10 +88,11 @@ def login_user(request: LoginRequest):
     return {
         "message": "Login successful",
         "user_id": user["user_id"],
-        "access_token": access_token, 
+        "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
     }
+
 
 @router.get("/me")
 def get_current_user_info(user=Depends(get_current_user)):
@@ -104,12 +103,12 @@ def get_current_user_info(user=Depends(get_current_user)):
         "is_active": user.get("is_active", True),
     }
 
+
 @router.put("/{user_id}")
 def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_current_user)):
-
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
-    
+
     users_df = load_versions("users", User, record_id=user_id)
 
     normalized_email = normalize_email(update.email) if update.email else None
@@ -125,12 +124,14 @@ def update_user(user_id: UUID, update: UserUpdateRequest, user=Depends(get_curre
         user_id=user_id,
         user_name=update.user_name or old["user_name"],
         email=normalized_email or old["email"],
-        hashed_password=bcrypt.hashpw(update.password.encode('utf-8'), salt) if update.password else old["hashed_password"],
+        hashed_password=bcrypt.hashpw(update.password.encode("utf-8"), salt)
+        if update.password
+        else old["hashed_password"],
         created_at=old["created_at"],
         updated_at=datetime.now(timezone.utc),
         is_current=True,
         is_deleted=False,
-        is_active=True
+        is_active=True,
     )
 
     save_version(updated_user, "users", "user_id")
@@ -143,8 +144,9 @@ def soft_delete_user(user_id: UUID, user=Depends(get_current_user)):
     # Only allow deleting your own account (or admins if you add auth)
     if str(user["user_id"]) != str(user_id) and not user.get("is_superuser", False):
         raise HTTPException(status_code=403, detail="You can only update your own profile")
-    
-    return soft_delete_record("users", str(user_id), "user_id", User, user=user, owner_field="user_id", require_owner=True)
+
+    return soft_delete_record("users", user_id, "user_id", User, user=user, owner_field="user_id", require_owner=True)
+
 
 @router.post("/refresh")
 def refresh_tokens(refresh_token: str):
@@ -170,16 +172,13 @@ def refresh_tokens(refresh_token: str):
         access_token = create_access_token({"sub": user_id})
         new_refresh_token = create_refresh_token(user_id)
 
-        return {
-            "access_token": access_token,
-            "refresh_token": new_refresh_token,
-            "token_type": "bearer"
-        }
+        return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
 
 @router.post("/request-password-reset")
 def request_password_reset(email: str):
@@ -187,7 +186,9 @@ def request_password_reset(email: str):
 
     normalized_email = normalize_email(email)
 
-    match = users_df[(users_df["email"] == normalized_email) & (users_df["is_current"]) & (~users_df["is_deleted"].fillna(False))]
+    match = users_df[
+        (users_df["email"] == normalized_email) & (users_df["is_current"]) & (~users_df["is_deleted"].fillna(False))
+    ]
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -208,18 +209,14 @@ def request_password_reset(email: str):
     )
     save_version(reset_token, "password_reset_tokens", "token_id")
     log_action(
-            None,
-            "request_password_reset",
-            "users",
-            str(match.user_id),
-            {"email": normalized_email, "otp_issued": True}  # Don’t log raw OTP
-        )
-    
-    return {
-        "message": "Password reset token generated",
-        "otp": otp,
-        "expires_in_minutes": 15
-    }
+        None,
+        "request_password_reset",
+        "users",
+        str(match.user_id),
+        {"email": normalized_email, "otp_issued": True},  # Don’t log raw OTP
+    )
+
+    return {"message": "Password reset token generated", "otp": otp, "expires_in_minutes": 15}
     # Hybrid: return token in dev/test, send email in prod
     # if os.getenv("ENV", "dev") == "dev":
     #     return {
@@ -232,27 +229,27 @@ def request_password_reset(email: str):
     #     send_email(email, subject="Password Reset", body=f"Your OTP is {otp}")
     #     return {"message": "Password reset email sent"}
 
-        
 
 @router.post("/change-password")
 def change_password(current_password: str, new_password: str, user=Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     users_df = load_versions("users", User)
     row = users_df[(users_df["user_id"] == str(user["user_id"])) & (users_df["is_current"])]
-    
+
     user = row.iloc[0]
 
-    if row.empty or not bcrypt.checkpw(current_password.encode('utf-8'), user["hashed_password"].encode('utf-8')):
+    if row.empty or not bcrypt.checkpw(current_password.encode("utf-8"), user["hashed_password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    
+
     history = load_versions("password_history", PasswordHistory)
     user_history = history[history["user_id"] == str(user["user_id"])].sort_values("changed_at", ascending=False)
     recent_passwords = user_history.head(MIN_NUMBER_OF_PREVIOUS_PASSWORDS)["hashed_password"].tolist()
 
     if any(bcrypt.checkpw(new_password.encode("utf-8"), p.encode("utf-8")) for p in recent_passwords):
-        raise HTTPException(status_code=400, detail=f"Cannot reuse the last {MIN_NUMBER_OF_PREVIOUS_PASSWORDS} passwords")
-    
+        raise HTTPException(
+            status_code=400, detail=f"Cannot reuse the last {MIN_NUMBER_OF_PREVIOUS_PASSWORDS} passwords"
+        )
+
     validate_password_strength(new_password)
 
     mark_old_version_as_stale("users", user["user_id"], "user_id")
@@ -262,7 +259,7 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
         user_id=user["user_id"],
         user_name=user["user_name"],
         email=user["email"],
-        hashed_password=bcrypt.hashpw(new_password.encode('utf-8'), salt),
+        hashed_password=bcrypt.hashpw(new_password.encode("utf-8"), salt),
         created_at=user["created_at"],
         updated_at=now,
         password_changed_at=now,
@@ -279,11 +276,12 @@ def change_password(current_password: str, new_password: str, user=Depends(get_c
 
     save_version(updated_user, "users", "user_id")
     log_action(user["user_id"], "change_password", "users", str(user["user_id"]))
-    
-    save_version(password_history,"password_history", "history_id")
-    on_password_change(str(user["user_id"]))
-    
+
+    save_version(password_history, "password_history", "history_id")
+    on_password_change(UUID(user["user_id"]))
+
     return {"message": "Password changed successfully. Please log in again."}
+
 
 @router.post("/reset-password")
 def reset_password(email: str, otp_code: str, new_password: str):
@@ -291,19 +289,25 @@ def reset_password(email: str, otp_code: str, new_password: str):
 
     normalized_email = normalize_email(email)
 
-    match = users_df[(users_df["email"] == normalized_email) & (users_df["is_current"]) & (~users_df["is_deleted"].fillna(False))]
+    match = users_df[
+        (users_df["email"] == normalized_email) & (users_df["is_current"]) & (~users_df["is_deleted"].fillna(False))
+    ]
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
 
     user_id = match.iloc[0]["user_id"]
 
     tokens_df = load_versions("password_reset_tokens", PasswordResetToken)
-    token_row = tokens_df[
-        (tokens_df["user_id"] == str(user_id)) &
-        (tokens_df["is_current"]) &
-        (~tokens_df.get("is_deleted", False).fillna(False)) &
-        (tokens_df["used"] == False)
-    ].sort_values("created_at", ascending=False).head(1)
+    token_row = (
+        tokens_df[
+            (tokens_df["user_id"] == str(user_id))
+            & (tokens_df["is_current"])
+            & (~tokens_df.get("is_deleted", False).fillna(False))
+            & (~tokens_df["used"].fillna(False))
+        ]
+        .sort_values("created_at", ascending=False)
+        .head(1)
+    )
 
     if token_row.empty:
         raise HTTPException(status_code=400, detail="No valid reset token found")
@@ -322,7 +326,9 @@ def reset_password(email: str, otp_code: str, new_password: str):
     user_history = history[history["user_id"] == str(user_id)].sort_values("changed_at", ascending=False)
     recent_passwords = user_history.head(MIN_NUMBER_OF_PREVIOUS_PASSWORDS)["hashed_password"].tolist()
     if any(bcrypt.checkpw(new_password.encode("utf-8"), p.encode("utf-8")) for p in recent_passwords):
-        raise HTTPException(status_code=400, detail=f"Cannot reuse the last {MIN_NUMBER_OF_PREVIOUS_PASSWORDS} passwords")
+        raise HTTPException(
+            status_code=400, detail=f"Cannot reuse the last {MIN_NUMBER_OF_PREVIOUS_PASSWORDS} passwords"
+        )
 
     # Update password
     mark_old_version_as_stale("users", user_id, "user_id")
@@ -346,13 +352,12 @@ def reset_password(email: str, otp_code: str, new_password: str):
     )
     save_version(password_history, "password_history", "history_id")
     log_action(
-            None,
-            "reset_password",
-            "users",
-            str(match.user_id),
-            {"otp_validated": True, "method": "otp"}  # instead of logging the OTP
-        )
-
+        None,
+        "reset_password",
+        "users",
+        str(match.user_id),
+        {"otp_validated": True, "method": "otp"},  # instead of logging the OTP
+    )
 
     # Mark token used
     mark_old_version_as_stale("password_reset_tokens", token["token_id"], "token_id")
@@ -363,19 +368,18 @@ def reset_password(email: str, otp_code: str, new_password: str):
 
     return {"message": "Password reset successful"}
 
+
 @router.get("/{user_id}")
 def get_user(user_id: UUID, user=Depends(get_current_user)):
     df = load_versions("users", User, record_id=user_id)
 
-    match = df[
-        (df["is_current"]) &
-        (~df.get("is_deleted", False).fillna(False))
-    ]
+    match = df[(df["is_current"]) & (~df.get("is_deleted", False).fillna(False))]
 
     if match.empty:
         raise HTTPException(status_code=404, detail="User not found")
     log_action(user["user_id"], "get", "user", str(user_id))
     return match.iloc[0].to_dict()
+
 
 @router.post("/{user_id}/suspend")
 def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
@@ -388,7 +392,7 @@ def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
 
     row = match.iloc[0].to_dict()
-    mark_old_version_as_stale("users", str(user_id), "user_id")
+    mark_old_version_as_stale("users", user_id, "user_id")
 
     updated = User(
         **row,
@@ -402,9 +406,10 @@ def suspend_user(user_id: UUID, reason: str, admin=Depends(get_current_user)):
     )
 
     save_version(updated, "users", "user_id")
-    on_user_suspended(str(user_id), reason, admin["user_id"])
+    on_user_suspended(user_id, reason, admin["user_id"])
     log_action(admin["user_id"], "suspend", "users", str(user_id), {"reason": reason})
     return {"message": "User suspended", "user_id": str(user_id)}
+
 
 @router.post("/{user_id}/unsuspend")
 def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
@@ -415,7 +420,7 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
 
     row = match.iloc[0].to_dict()
-    mark_old_version_as_stale("users", str(user_id), "user_id")
+    mark_old_version_as_stale("users", user_id, "user_id")
 
     updated = User(
         **row,
@@ -429,7 +434,6 @@ def unsuspend_user(user_id: UUID, admin=Depends(get_current_user)):
     )
 
     save_version(updated, "users", "user_id")
-    on_user_unsuspended(str(user_id), admin["user_id"])
+    on_user_unsuspended(user_id, admin["user_id"])
 
     return {"message": "User unsuspended", "user_id": str(user_id)}
-

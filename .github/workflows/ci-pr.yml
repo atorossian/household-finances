@@ -1,35 +1,22 @@
-name: CI (Pull Requests)
+name: CI (PR)
 
 on:
   pull_request:
-    branches:
-      - "**"
+    branches: [ "main" ]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      APP_ENV: test
-      AWS_REGION: eu-west-1
-      S3_BUCKET: household-finances-test
-      CONFIG_PATH: ./household-finances-config.yaml
+    concurrency:
+      group: ci-pr-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::873999421968:role/household-finances-ci-role
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Cleanup S3 test bucket
-        run: |
-          aws s3 rm s3://$S3_BUCKET --recursive || true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,12 +24,30 @@ jobs:
           python-version: "3.12"
 
       - name: Install Poetry
-        run: pip install poetry
+        run: |
+          pipx install poetry
+          poetry --version
 
-      - name: Install dependencies (with dev group)
-        run: poetry install --with dev
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+            ./.venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi
 
       - name: Run tests
+        env:
+          # Provide minimal env so settings don’t crash
+          SECRET_KEY: "test-key"
+          AWS_REGION: "eu-west-1"
+          APP_ENV: "test"
         run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          poetry run pytest --maxfail=1 --disable-warnings -q --cov=app
+          poetry run pytest -q

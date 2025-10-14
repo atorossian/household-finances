@@ -1,6 +1,7 @@
 from calendar import monthrange
 import pandas as pd
 
+
 def safe_due_date(start_date, i, due_day):
     temp = start_date + pd.DateOffset(months=i)
     last_day = monthrange(temp.year, temp.month)[1]

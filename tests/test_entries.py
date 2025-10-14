@@ -36,9 +36,7 @@ def test_entries_full_lifecycle(client: TestClient):
     client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
 
     # --- Assign user to account ---
-    r = client.post(f"/accounts/{account_id}/assign-user",
-                    params={"target_user_id": user_id},
-                    headers=headers)
+    r = client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
     assert r.status_code == 200
 
     # --- Create entry ---
@@ -81,6 +79,7 @@ def test_entries_full_lifecycle(client: TestClient):
     r = client.get("/entries/", headers=headers)
     assert all(e["entry_id"] != entry_id for e in r.json())
 
+
 def _bootstrap_user_household_account(client):
     # Register & login
     email = f"import-{uuid4().hex[:6]}@example.com"
@@ -89,7 +88,7 @@ def _bootstrap_user_household_account(client):
     r = client.post("/users/login", json={"email": email, "password": password})
     tokens = r.json()
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-    
+
     # sanity check
     me = client.get("/users/me", headers=headers)
     assert me.status_code == 200
@@ -110,6 +109,7 @@ def _bootstrap_user_household_account(client):
     client.post(f"/accounts/{account_id}/assign-user", params={"target_user_id": user_id}, headers=headers)
 
     return headers, household_id, account_id
+
 
 def test_import_entries_csv(client):
     headers, household_id, account_id = _bootstrap_user_household_account(client)
@@ -154,6 +154,7 @@ def test_import_entries_csv(client):
     entries = r.json()
     descs = {e["description"] for e in entries}
     assert "CSV row 1" in descs and "CSV row 2" in descs
+
 
 def test_import_entries_xlsx(client):
     pytest.importorskip("openpyxl")  # ensure engine available
