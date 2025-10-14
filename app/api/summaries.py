@@ -29,16 +29,25 @@ def get_entry_summary(
     if df.empty:
         return {"message": "No entries available"}
 
+    # Normalize dates and types
     df["entry_date"] = pd.to_datetime(df["entry_date"])
-    df["month"] = df["entry_date"].dt.to_period("M")
+    df["type"] = df["type"].astype(str)
 
     # --- Household filter ---
     if household_id:
         require_household_role(user, household_id, required_role=Role.member)
-        df = df[df["household_id"] == household_id]
+        df = df[df["household_id"] == str(household_id)]
 
     # --- Date filtering ---
-    if last_n_months:
+    # If last_n_months is given without explicit start/end/month, anchor to the latest entry month
+    if last_n_months and not any([start, end, month]):
+        anchor = df["entry_date"].max()  # last date in the dataset
+        anchor_month_start = anchor.to_period("M").to_timestamp()  # YYYY-MM-01
+        cutoff = anchor_month_start - pd.DateOffset(months=last_n_months - 1)
+        window_end = anchor_month_start + pd.offsets.MonthEnd(1)  # exclusive end of anchor month
+        df = df[(df["entry_date"] >= cutoff) & (df["entry_date"] < window_end)]
+    elif last_n_months:
+        # (kept for completeness if you also pass month/start/end)
         today = pd.to_datetime("today").normalize()
         cutoff = (today - pd.DateOffset(months=last_n_months - 1)).replace(day=1)
         df = df[df["entry_date"] >= cutoff]
@@ -47,13 +56,17 @@ def get_entry_summary(
         end_date = pd.to_datetime(end + "-01") + pd.offsets.MonthEnd(1)
         df = df[(df["entry_date"] >= start_date) & (df["entry_date"] <= end_date)]
     elif month:
-        df = df[df["month"] == month]
+        # Compare on YYYY-MM strings for stability
+        df = df[df["entry_date"].dt.strftime("%Y-%m") == month]
 
     if type:
         df = df[df["type"] == type]
 
     if df.empty:
         return {"message": "No entries for given filters"}
+
+    # Precompute month label for grouping
+    df["month"] = df["entry_date"].dt.strftime("%Y-%m")
 
     # --- Resolve account & household names ---
     df["account_name"] = df["account_id"].apply(
@@ -64,27 +77,32 @@ def get_entry_summary(
     )
 
     # --- Aggregate summaries ---
-    total = df["amount"].sum()
+    total = float(df["amount"].sum())
     by_category = df.groupby("category")["amount"].sum().to_dict()
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-    # --- Trends ---
-    type_trends, category_trends = None, None
+    # --- Trends (only when a multi-month window is requested) ---
+    type_trends = category_trends = None
     if last_n_months or (start and end):
-        # Normalize month to string early
-        df["month"] = df["month"].astype(str)
+        type_trends = (
+            df.groupby(["month", "type"], as_index=False)["amount"]
+            .sum()
+            .rename(columns={"amount": "amount"})
+            .to_dict("records")
+        )
+        category_trends = (
+            df.groupby(["month", "category"], as_index=False)["amount"]
+            .sum()
+            .rename(columns={"amount": "amount"})
+            .to_dict("records")
+        )
 
-        # Type-level trends
-        type_trends = df.groupby(["month", "type"])["amount"].sum().reset_index().to_dict(orient="records")
-
-        # Category-level trends
-        category_trends = df.groupby(["month", "category"])["amount"].sum().reset_index().to_dict(orient="records")
     return {
         "total": round(total, 2),
-        "by_category": {k: round(v, 2) for k, v in by_category.items()},
-        "by_account": {k: round(v, 2) for k, v in by_account.items()},
-        "by_household": {k: round(v, 2) for k, v in by_household.items()},
+        "by_category": {k: round(float(v), 2) for k, v in by_category.items()},
+        "by_account": {k: round(float(v), 2) for k, v in by_account.items()},
+        "by_household": {k: round(float(v), 2) for k, v in by_household.items()},
         "type_trends": type_trends,
         "category_trends": category_trends,
     }
