@@ -34,7 +34,7 @@ def get_entry_summary(
 
     # --- Household filter ---
     if household_id:
-        require_household_role(user, household_id, required_role=Role("member"))
+        require_household_role(user, household_id, required_role=Role.member)
         df = df[df["household_id"] == household_id]
 
     # --- Date filtering ---

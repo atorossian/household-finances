@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.post("/")
 def create_account(payload: Account, user=Depends(get_current_user)):
-    require_household_role(user, payload.household_id, Role("admin"))
+    require_household_role(user, payload.household_id, Role.admin)
     now = datetime.now(timezone.utc)
     account = Account(
         account_id=uuid4(),
@@ -40,7 +40,7 @@ def assign_user_to_account(account_id: UUID, target_user_id: UUID, user=Depends(
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
 
-    require_household_role(user, acc["household_id"], Role("admin"))
+    require_household_role(user, acc["household_id"], Role.admin)
 
     mem = get_membership(target_user_id, acc["household_id"])
     if not mem:
@@ -71,7 +71,7 @@ def update_account(account_id: UUID, name: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
 
-    require_household_role(user, acc["household_id"], Role("admin"))
+    require_household_role(user, acc["household_id"], Role.admin)
 
     mark_old_version_as_stale("accounts", account_id, "account_id")
 
@@ -98,7 +98,7 @@ def delete_account(account_id: UUID, user=Depends(get_current_user)):
     if cur.empty:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = cur.iloc[0].to_dict()
-    require_household_role(user, acc["household_id"], Role("admin"))
+    require_household_role(user, acc["household_id"], Role.admin)
 
     resp = soft_delete_record(
         "accounts",
@@ -154,7 +154,7 @@ def get_account(account_id: UUID, user=Depends(get_current_user)):
         "accounts",
         Account,
         account_id,
-        permission_check=lambda r: require_account_access(user, r, min_role="member"),
+        permission_check=lambda r: require_account_access(user, r, min_role=Role.member),
         history=False,
     )
     log_action(user["user_id"], "get", "accounts", str(account_id))
@@ -167,7 +167,7 @@ def get_account_history(account_id: UUID, user=Depends(get_current_user), page=D
         "accounts",
         Account,
         account_id,
-        permission_check=lambda r: require_account_access(user, r, min_role="member"),
+        permission_check=lambda r: require_account_access(user, r, min_role=Role.member),
         history=True,
         page=page,
         sort_by="updated_at",

@@ -55,7 +55,7 @@ def create_household(payload: HouseholdCreate, user=Depends(get_current_user)):
 
 @router.post("/assign-user-to-household")
 def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get_current_user)):
-    require_household_role(user, household_id, required_role=Role("admin"))
+    require_household_role(user, household_id, required_role=Role.admin)
     mapping = UserHousehold(user_id=user_id, household_id=household_id)
     save_version(mapping, "user_households", "mapping_id")
     log_action(user["user_id"], "assign_user", "households", str(household_id), {"user_id": str(user_id)})
@@ -65,7 +65,7 @@ def assign_user_to_household(user_id: UUID, household_id: UUID, user=Depends(get
 
 @router.put("/{household_id}")
 def update_household(household_id: UUID, name: str, user=Depends(get_current_user)):
-    require_household_role(user, household_id, required_role=Role("admin"))
+    require_household_role(user, household_id, required_role=Role.admin)
     mark_old_version_as_stale("households", household_id, "household_id")
     households = load_versions("households", Household)
     current = households[households["household_id"] == str(household_id)].iloc[-1].to_dict()
@@ -87,7 +87,7 @@ def update_household(household_id: UUID, name: str, user=Depends(get_current_use
 
 @router.delete("/{household_id}")
 def delete_household(household_id: UUID, user=Depends(get_current_user)):
-    require_household_role(user, household_id, required_role=Role("admin"))
+    require_household_role(user, household_id, required_role=Role.admin)
 
     return soft_delete_record(
         "households", household_id, "household_id", Household, user=user, owner_field="user_id", require_owner=True
@@ -134,7 +134,7 @@ def get_account(household_id: UUID, user=Depends(get_current_user)):
         "households",
         Household,
         household_id,
-        permission_check=lambda r: require_household_role(user, r["household_id"], required_role=Role("member")),
+        permission_check=lambda r: require_household_role(user, r["household_id"], required_role=Role.member),
         history=False,
     )
     log_action(user["user_id"], "get", "households", str(household_id))
@@ -147,7 +147,7 @@ def get_account_history(household_id: UUID, user=Depends(get_current_user), page
         "households",
         Household,
         household_id,
-        permission_check=lambda r: require_household_role(user, r["household_id"], required_role=Role("member")),
+        permission_check=lambda r: require_household_role(user, r["household_id"], required_role=Role.member),
         history=True,
         page=page,
         sort_by="updated_at",
@@ -164,7 +164,7 @@ def get_account_history(household_id: UUID, user=Depends(get_current_user), page
 
 @router.post("/{household_id}/members")
 def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", user=Depends(get_current_user)):
-    require_household_role(user, household_id, required_role=Role("admin"))
+    require_household_role(user, household_id, required_role=Role.admin)
     mapping = UserHousehold(user_id=target_user_id, household_id=household_id, role=Role(role))
     save_version(mapping, "user_households", "mapping_id")
     log_action(
@@ -175,7 +175,7 @@ def add_member(household_id: UUID, target_user_id: UUID, role: str = "member", u
 
 @router.delete("/{household_id}/members/{target_user_id}")
 def remove_member(household_id: UUID, target_user_id: UUID, user=Depends(get_current_user)):
-    require_household_role(user, household_id, required_role=Role("admin"))
+    require_household_role(user, household_id, required_role=Role.admin)
     df = load_versions("user_households", UserHousehold)
     cur = df[
         (df["user_id"] == str(target_user_id))
