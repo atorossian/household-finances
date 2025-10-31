@@ -37,7 +37,7 @@ dependencies = [
 ]
 
 [tool.poetry]
-packages = [{include = "src", from = "household_finances"}]
+packages = [{include = "app", from = "household_finances"}]
 package-mode = false
 
 [tool.poetry.group.dev.dependencies]

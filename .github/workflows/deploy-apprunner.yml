@@ -1,0 +1,39 @@
+name: Deploy (App Runner)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [ main ]
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  deploy-dev:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute image URI (dev)
+        run: |
+          SHA=$(git rev-parse --short=12 HEAD)
+          REPO="${{ secrets.ECR_REPO || 'household-finances' }}"
+          echo "IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${REPO}:dev-$SHA" >> $GITHUB_ENV
+
+      - name: Update App Runner service (image + env)
+        run: |
+          aws apprunner update-service \
+            --service-arn "${{ secrets.DEV_APP_RUNNER_ARN }}" \
+            --source-configuration "ImageRepository={ImageIdentifier=${IMAGE_URI},ImageRepositoryType=ECR,ImageConfiguration={Port=8000,RuntimeEnvironmentVariables=[{Name=APP_ENV,Value=dev},{Name=AWS_REGION,Value=${{ env.AWS_REGION }}},{Name=SECRET_KEY,Value=${{ secrets.SECRET_KEY_DEV }}},{Name=S3_BUCKET,Value=${{ secrets.S3_BUCKET_DEV }}},{Name=ACCESS_TOKEN_EXPIRE_MINUTES,Value=15},{Name=REFRESH_TOKEN_EXPIRE_DAYS,Value=7},{Name=ENCODING_ALGORITHM,Value=HS256},{Name=LOG_LEVEL,Value=INFO}]}}"

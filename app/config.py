@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="dev", alias="APP_ENV")
     secret_key: str = Field(alias="SECRET_KEY")
     db_url: Optional[str] = Field(default=None, alias="DB_URL")
-    s3_bucket: Optional[str] = Field(default=None, alias="S3_BUCKET")
+    s3_bucket: Optional[str] = Field(default="hf-dev", alias="S3_BUCKET")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=7, alias="REFRESH_TOKEN_EXPIRE_DAYS")

@@ -39,25 +39,20 @@ def get_entry_summary(
         df = df[df["household_id"] == str(household_id)]
 
     # --- Date filtering ---
-    # If last_n_months is given without explicit start/end/month, anchor to the latest entry month
-    if last_n_months and not any([start, end, month]):
-        anchor = df["entry_date"].max()  # last date in the dataset
-        anchor_month_start = anchor.to_period("M").to_timestamp()  # YYYY-MM-01
+    if last_n_months:
+        # Anchor to the latest entry date present in the filtered set,
+        # so historical tests (e.g., July/August data) behave deterministically.
+        latest = pd.to_datetime(df["entry_date"].max()).normalize()
+        anchor_month_start = pd.Timestamp(latest.year, latest.month, 1)
         cutoff = anchor_month_start - pd.DateOffset(months=last_n_months - 1)
-        window_end = anchor_month_start + pd.offsets.MonthEnd(1)  # exclusive end of anchor month
-        df = df[(df["entry_date"] >= cutoff) & (df["entry_date"] < window_end)]
-    elif last_n_months:
-        # (kept for completeness if you also pass month/start/end)
-        today = pd.to_datetime("today").normalize()
-        cutoff = (today - pd.DateOffset(months=last_n_months - 1)).replace(day=1)
         df = df[df["entry_date"] >= cutoff]
     elif start and end:
         start_date = pd.to_datetime(start + "-01")
         end_date = pd.to_datetime(end + "-01") + pd.offsets.MonthEnd(1)
         df = df[(df["entry_date"] >= start_date) & (df["entry_date"] <= end_date)]
     elif month:
-        # Compare on YYYY-MM strings for stability
-        df = df[df["entry_date"].dt.strftime("%Y-%m") == month]
+        # Ensure month comparison is done in Period/str consistently
+        df = df[df["entry_date"].dt.to_period("M") == pd.Period(month)]
 
     if type:
         df = df[df["type"] == type]
@@ -82,21 +77,15 @@ def get_entry_summary(
     by_account = df.groupby("account_name")["amount"].sum().to_dict()
     by_household = df.groupby("household_name")["amount"].sum().to_dict()
 
-    # --- Trends (only when a multi-month window is requested) ---
-    type_trends = category_trends = None
+    # --- Trends ---
+    type_trends, category_trends = None, None
     if last_n_months or (start and end):
-        type_trends = (
-            df.groupby(["month", "type"], as_index=False)["amount"]
-            .sum()
-            .rename(columns={"amount": "amount"})
-            .to_dict("records")
-        )
-        category_trends = (
-            df.groupby(["month", "category"], as_index=False)["amount"]
-            .sum()
-            .rename(columns={"amount": "amount"})
-            .to_dict("records")
-        )
+        df_tr = df.copy()
+        df_tr["month"] = df_tr["entry_date"].dt.to_period("M").astype(str)
+
+        type_trends = df_tr.groupby(["month", "type"])["amount"].sum().reset_index().to_dict(orient="records")
+
+        category_trends = df_tr.groupby(["month", "category"])["amount"].sum().reset_index().to_dict(orient="records")
 
     return {
         "total": round(total, 2),
